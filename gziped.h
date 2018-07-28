@@ -1,4 +1,26 @@
 /**
+ * Copyright 2018 Jean-Daniel Michaud
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+/**
  * Reference:
  * gzip container: https://www.ietf.org/rfc/rfc1952.txt
  * DEFLATE compression method: https://www.ietf.org/rfc/rfc1951.txt
@@ -175,6 +197,7 @@ void free_metadata(metadata_t *metadata) {
   if (metadata->extra_header.fcomment != NULL) free(metadata->extra_header.fcomment);
 }
 
+// https://tools.ietf.org/html/rfc1952#page-5
 void get_metadata(uint8_t *buf, ssize_t size, metadata_t *metadata) {
   // Get header
   memcpy(&metadata->header, buf, GZIP_HEADER_SIZE);
@@ -246,12 +269,12 @@ void generate_next_codes(uint8_t *bit_counts, uint32_t *next_codes) {
 }
 
 /**
- * Generates a binary heap containg the mapped value.
+ * Generates an containg the mapped value.
  * @params code_lengths is the array of code length
  * @params size is the size of code_lengths
  * @param next_codes  next_codes[N] is the first code of length N. It must be
  * allocated with a minimum size of DEFLATE_CODE_MAX_BIT_LENGTH.
- * @params dict A binary heap filled up with values depending on their huffman
+ * @params dict A array filled up with values depending on their huffman
  * code. For example:
  * { A: 010, B: 00, C: 10 }
  * is represented with this tree:
@@ -262,7 +285,7 @@ void generate_next_codes(uint8_t *bit_counts, uint32_t *next_codes) {
  * B   x C
  *    /
  *   A
- * which in turn is stored in this binary heap:
+ * which in turn is stored in this array:
  * { -1, -1, -1, B, -1, C, -1, -1, -1, A, -1, -1, -1, -1, -1 }
  */
 void generate_dict(const uint8_t *code_lengths, ssize_t size,
