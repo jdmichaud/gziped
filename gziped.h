@@ -1,3 +1,8 @@
+/**
+ * Reference:
+ * gzip container: https://www.ietf.org/rfc/rfc1952.txt
+ * DEFLATE compression method: https://www.ietf.org/rfc/rfc1951.txt
+ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -22,8 +27,10 @@
 #define DEFLATE_LITERAL_BLOCK_TYPE 0
 #define DEFLATE_FIX_HUF_BLOCK_TYPE 1
 #define DEFLATE_DYN_HUF_BLOCK_TYPE 2
+#define DEFLATE_CODE_MAX_BIT_LENGTH 32
+#define DEFLATE_ALPHABET_SIZE 288
 
-// http://www.zlib.org/rfc-gzip.html#member-format
+// https://tools.ietf.org/html/rfc1952#page-5
 typedef struct header_s {
   uint16_t  magic;
   uint8_t   cm;
@@ -52,6 +59,7 @@ typedef struct metadata_s {
   footer_t footer;
 } metadata_t;
 
+// https://tools.ietf.org/html/rfc1951#page-10
 typedef struct block_s {
   uint8_t bfinal:1;
   uint8_t btype:2;
@@ -79,6 +87,31 @@ const char *OS[14] = {
   "NTFS filesystem (NT)",
   "QDOS",
   "Acorn RISCOS",
+};
+
+// The static huffman alphabet for literals and length
+// https://tools.ietf.org/html/rfc1951#page-12
+typedef struct static_huffman_params_s {
+  uint8_t code_lengths[DEFLATE_ALPHABET_SIZE];
+  uint32_t next_codes[32];
+} static_huffman_params_t;
+// [8] * (144 - 0) + [9] * (256-144) + [7] * (280 - 256) + [8] * (288 - 280)
+static_huffman_params_t static_huffman_params = {
+  {
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9,
+    9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+    9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+    9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+    9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+    9, 9, 9, 9, 9, 9, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+    7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8
+  },
+  { 0, 0, 0, 0, 0, 0, 0, 0b0000000, 0b00110000, 0b110010000 },
 };
 
 void usage() {
@@ -110,6 +143,16 @@ void print_metadata(metadata_t metadata) {
   fprintf(stdout, "block offset: %li bytes\n", metadata.block_offset);
   fprintf(stdout, "crc32: 0x%04x\n", metadata.footer.crc32);
   fprintf(stdout, "isize: %u bytes\n", metadata.footer.isize);
+}
+
+char *tobin(uint32_t code, uint8_t length) {
+  if (length == 0) return NULL;
+  char *s = (char *) malloc(sizeof (char) * length + 1);
+  s[length] = 0;
+  for (uint8_t i = 0; i < length; ++i) {
+    s[length - i - 1] = code & (1 << i) ? '1' : '0';
+  }
+  return s;
 }
 
 uint8_t *get_extra_header(uint8_t *buf, header_t header, extra_header_t *extra) {
@@ -167,6 +210,69 @@ void get_metadata(uint8_t *buf, ssize_t size, metadata_t *metadata) {
   return;
 }
 
+/**
+ * Counts the number of code by length.
+ * If { 2, 1, 3, 3 } represents the code lengths then there is one code of
+ * length 2, 1 of length 1 and 2 of length 3. The function will fillup
+ * bit_counts with the result this way: { 0, 1, 1, 2, 0 ...., 0 }.
+ *
+ * @params code_lengths is the array of code length
+ * @params size is the size of code_lengths
+ * @params length_counts is the resulting array. The array must be allocated
+ * with a minimum size of DEFLATE_CODE_MAX_BIT_LENGTH.
+ */
+void count_by_code_length(const uint8_t *code_lengths, ssize_t size,
+                          uint8_t *length_counts) {
+  memset(length_counts, 0, DEFLATE_CODE_MAX_BIT_LENGTH * sizeof (uint8_t));
+  for (; size > 0; --size) {
+    length_counts[code_lengths[size - 1]]++;
+  }
+}
+
+/**
+ * Generates the starting code for a specific code lengths.
+ * if bit_counts = { 0, 1, 1, 2 } the next_codes is { 0, 2, 6 }, representing
+ * the following dictionnary:
+ * value code
+ * ----- ----
+ * A     10  -> A is encoded on two bits, first code is 2 (10)
+ * B     0   -> B is encoded on one bit, first code is 0 (0)
+ * C     110 -> C is encoded on three bits, first code is 110 (6)
+ * D     111 -> D is encoded on three bits, code is 111 (6 + 1). This code is
+ *              not present in next_codes as it is not the first code of its
+ *              length
+ * https://tools.ietf.org/html/rfc1951#page-8
+ *
+ * @param bit_counts bit_counts[N] is the number of code of length N. Its size
+ * is DEFLATE_CODE_MAX_BIT_LENGTH.
+ * @param next_codes  next_codes[N] is the first code of length N. It must be
+ * allocated with a minimum size of DEFLATE_CODE_MAX_BIT_LENGTH.
+ */
+void generate_next_codes(uint8_t *bit_counts, uint32_t *next_codes) {
+  uint32_t code = 0;
+  for (uint8_t nbits = 1; nbits <= DEFLATE_CODE_MAX_BIT_LENGTH; nbits++) {
+    next_codes[nbits] = code = (code + bit_counts[nbits - 1]) << 1;
+  }
+}
+
+void free_dict(char **dict, ssize_t size) {
+  while (size > 0) {
+    free(dict[size - 1]);
+    size--;
+  }
+}
+
+/**
+ * Generates a dictionary mapping every value of the alphabet to a code.
+  */
+void generate_dict(const uint8_t *code_lengths, ssize_t size,
+                   uint32_t *next_codes, char **dict) {
+  for (uint16_t i = 0; i < size; ++i) {
+    dict[i] = tobin(next_codes[code_lengths[i]], code_lengths[i]);
+    next_codes[code_lengths[i]]++;
+  }
+}
+
 void fetch_block(uint8_t *buf, block_t *block) {
   block->bfinal = (*buf & 128) >> 7;
   block->btype = (*buf & 96) >> 5;
@@ -183,43 +289,14 @@ void fetch_block(uint8_t *buf, block_t *block) {
 
 uint8_t *inflate(uint8_t *buf, uint8_t *output) {
   block_t block;
+  // Generate the static huffman dictionary
+  char *static_dict[288];
+  generate_dict(static_huffman_params.code_lengths, DEFLATE_ALPHABET_SIZE,
+    static_huffman_params.next_codes, static_dict);
+
   fetch_block(buf, &block);
   fprintf(stdout, "bfinal: %i\n", block.bfinal);
   fprintf(stdout, "btype: %i\n", block.btype);
   return NULL;
 }
 
-int main(int argc, char **argv) {
-  if (argc != 2) {
-    fprintf(stderr, "error: wrong arguments\n");
-    usage();
-    exit(1);
-  }
-
-  int ifd = open(argv[1], O_RDONLY);
-  if (ifd < 0) {
-    perror("open");
-    exit(1);
-  }
-
-  off_t size = lseek(ifd, 0, SEEK_END);
-  if (size < 0) {
-    perror("lseek");
-    exit(1);
-  }
-
-  uint8_t *buffer = NULL;
-  buffer = mmap(buffer, size, PROT_READ, MAP_SHARED, ifd, 0);
-
-  metadata_t metadata;
-  get_metadata(buffer, size, &metadata);
-  // print_metadata(*metadata);
-
-  uint8_t *inflated = (uint8_t *) malloc(metadata.footer.isize);
-  inflate(&buffer[metadata.block_offset], inflated);
-
-  free(inflated);
-  free_metadata(&metadata);
-  munmap(buffer, size);
-  return 0;
-}
