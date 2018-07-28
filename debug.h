@@ -44,4 +44,14 @@ char* itoa(int value, char* str, int radix) {
   return str;
 }
 
+char *tobin(uint32_t code, uint8_t length) {
+  if (length == 0) return NULL;
+  char *s = (char *) malloc(sizeof (char) * length + 1);
+  s[length] = 0;
+  for (uint8_t i = 0; i < length; ++i) {
+    s[length - i - 1] = code & (1 << i) ? '1' : '0';
+  }
+  return s;
+}
+
 #endif // __DEBUG_H__

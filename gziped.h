@@ -145,16 +145,6 @@ void print_metadata(metadata_t metadata) {
   fprintf(stdout, "isize: %u bytes\n", metadata.footer.isize);
 }
 
-char *tobin(uint32_t code, uint8_t length) {
-  if (length == 0) return NULL;
-  char *s = (char *) malloc(sizeof (char) * length + 1);
-  s[length] = 0;
-  for (uint8_t i = 0; i < length; ++i) {
-    s[length - i - 1] = code & (1 << i) ? '1' : '0';
-  }
-  return s;
-}
-
 uint8_t *get_extra_header(uint8_t *buf, header_t header, extra_header_t *extra) {
   uint8_t *current = buf + GZIP_HEADER_SIZE;
   if (header.flg & FEXTRA) {
@@ -255,48 +245,72 @@ void generate_next_codes(uint8_t *bit_counts, uint32_t *next_codes) {
   }
 }
 
-void free_dict(char **dict, ssize_t size) {
-  while (size > 0) {
-    free(dict[size - 1]);
-    size--;
-  }
-}
-
 /**
- * Generates a dictionary mapping every value of the alphabet to a code.
-  */
+ * Generates a binary heap containg the mapped value.
+ * @params code_lengths is the array of code length
+ * @params size is the size of code_lengths
+ * @param next_codes  next_codes[N] is the first code of length N. It must be
+ * allocated with a minimum size of DEFLATE_CODE_MAX_BIT_LENGTH.
+ * @params dict A binary heap filled up with values depending on their huffman
+ * code. For example:
+ * { A: 010, B: 00, C: 10 }
+ * is represented with this tree:
+ *      x
+ *    /   \
+ *   x     x
+ *  / \   /
+ * B   x C
+ *    /
+ *   A
+ * which in turn is stored in this binary heap:
+ * { -1, -1, -1, B, -1, C, -1, -1, -1, A, -1, -1, -1, -1, -1 }
+ */
 void generate_dict(const uint8_t *code_lengths, ssize_t size,
-                   uint32_t *next_codes, char **dict) {
+                   uint32_t *next_codes, uint16_t *dict) {
   for (uint16_t i = 0; i < size; ++i) {
-    dict[i] = tobin(next_codes[code_lengths[i]], code_lengths[i]);
+    uint8_t length = code_lengths[i];
+
+    uint32_t code = next_codes[length];
+    uint32_t m = 1 << (length - 1);
+    uint16_t index = 0;
+    while (m) {
+      index <<= 1;
+      index += code & m ? 2 : 1;
+      m >>= 1;
+    }
+    dict[index] = i;
     next_codes[code_lengths[i]]++;
   }
 }
 
-void fetch_block(uint8_t *buf, block_t *block) {
-  block->bfinal = (*buf & 128) >> 7;
-  block->btype = (*buf & 96) >> 5;
-
-  switch (block->btype) {
-    case DEFLATE_LITERAL_BLOCK_TYPE:
-      break;
-    case DEFLATE_FIX_HUF_BLOCK_TYPE:
-      break;
-    case DEFLATE_DYN_HUF_BLOCK_TYPE:
-      break;
-  }
-}
-
-uint8_t *inflate(uint8_t *buf, uint8_t *output) {
-  block_t block;
+void inflate(uint8_t *buf, uint8_t *output) {
   // Generate the static huffman dictionary
-  char *static_dict[288];
+  uint16_t static_dict[288];
+  memset(static_dict, -1, 512 * sizeof (uint16_t));
   generate_dict(static_huffman_params.code_lengths, DEFLATE_ALPHABET_SIZE,
     static_huffman_params.next_codes, static_dict);
 
-  fetch_block(buf, &block);
-  fprintf(stdout, "bfinal: %i\n", block.bfinal);
-  fprintf(stdout, "btype: %i\n", block.btype);
-  return NULL;
+  uint8_t bfinal = 0;
+  uint8_t *current_buf = buf;
+  uint8_t *current_output = output;
+  do {
+    bfinal = (*current_buf & 128) >> 7;
+    uint8_t btype = (*current_buf & 96) >> 5;
+
+    switch (btype) {
+      case DEFLATE_LITERAL_BLOCK_TYPE: {
+        current_buf++;
+        uint16_t len = *current_buf;
+        current_buf++;
+        memcpy(current_output, current_buf, len * sizeof (uint8_t));
+        current_buf += len;
+        break;
+      }
+      case DEFLATE_FIX_HUF_BLOCK_TYPE:
+        break;
+      case DEFLATE_DYN_HUF_BLOCK_TYPE:
+        break;
+    }
+  } while (bfinal != 1);
 }
 
