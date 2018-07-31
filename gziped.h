@@ -94,6 +94,9 @@ typedef struct block_s {
 #define FNAME     (1 << 3)
 #define FCOMMENT  (1 << 4)
 
+// Move the mask bit to the right up to 1, then reinit to 128 and increment ptr
+#define INCREMENT_MASK(mask, ptr) (mask = (mask = mask >> 1) ? mask : 128) == 128 && ++ptr;
+
 const char *OS[14] = {
   "FAT filesystem (MS-DOS, OS/2, NT/Win32)",
   "Amiga",
@@ -306,6 +309,12 @@ void generate_dict(const uint8_t *code_lengths, ssize_t size,
   }
 }
 
+void inflate_block(uint8_t **pos, uint8_t *mask,
+                   uint16_t *dict, uint8_t *output) {
+  printf("inflate_block called\n");
+  return ;
+}
+
 void inflate(uint8_t *buf, uint8_t *output) {
   // Generate the static huffman dictionary
   uint16_t static_dict[288];
@@ -315,25 +324,39 @@ void inflate(uint8_t *buf, uint8_t *output) {
 
   uint8_t bfinal = 0;
   uint8_t *current_buf = buf;
+  uint8_t mask = 0b1000000;
   uint8_t *current_output = output;
   do {
-    bfinal = (*current_buf & 128) >> 7;
-    uint8_t btype = (*current_buf & 96) >> 5;
+    bfinal = (*current_buf & mask) ? 1 : 0;
+    INCREMENT_MASK(mask, current_buf);
+
+    uint8_t btype = *current_buf & mask ? 2 : 0;
+    INCREMENT_MASK(mask, current_buf);
+    btype |= *current_buf & mask ? 1 : 0;
+    INCREMENT_MASK(mask, current_buf);
 
     switch (btype) {
       case DEFLATE_LITERAL_BLOCK_TYPE: {
-        current_buf++;
+        // https://tools.ietf.org/html/rfc1951#page-11
+        // Uncompressed block starts on the next byte
+        if (mask != 128) current_buf++;
         uint16_t len = *current_buf;
-        current_buf++;
+        current_buf += 4; // Skiping 4 bytes (LEN and NLEN)
         memcpy(current_output, current_buf, len * sizeof (uint8_t));
         current_buf += len;
         break;
       }
-      case DEFLATE_FIX_HUF_BLOCK_TYPE:
+      case DEFLATE_FIX_HUF_BLOCK_TYPE: {
+        inflate_block(&current_buf, &mask, static_dict, output);
         break;
-      case DEFLATE_DYN_HUF_BLOCK_TYPE:
+      }
+      case DEFLATE_DYN_HUF_BLOCK_TYPE: {
+        uint16_t dict[1024];
+        inflate_block(&current_buf, &mask, dict, output);
         break;
+      }
     }
+    return;
   } while (bfinal != 1);
 }
 
