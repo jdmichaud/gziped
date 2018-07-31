@@ -94,9 +94,6 @@ typedef struct block_s {
 #define FNAME     (1 << 3)
 #define FCOMMENT  (1 << 4)
 
-// Move the mask bit to the right up to 1, then reinit to 128 and increment ptr
-#define INCREMENT_MASK(mask, ptr) (mask = (mask = mask >> 1) ? mask : 128) == 128 && ++ptr;
-
 const char *OS[14] = {
   "FAT filesystem (MS-DOS, OS/2, NT/Win32)",
   "Amiga",
@@ -138,6 +135,26 @@ static_huffman_params_t static_huffman_params = {
   },
   { 0, 0, 0, 0, 0, 0, 0, 0b0000000, 0b00110000, 0b110010000 },
 };
+
+#define DEFLATE_LENGTH_EXTRA_BITS_ARRAY_SIZE 29
+#define DEFLATE_LENGTH_EXTRA_BITS_ARRAY_OFFSET 257
+
+// https://tools.ietf.org/html/rfc1951#page-12
+uint8_t length_extra_bits[DEFLATE_LENGTH_EXTRA_BITS_ARRAY_SIZE] = {
+  0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5,
+  5, 5, 0
+};
+
+#define DEFLATE_DISTANCE_EXTRA_BITS_ARRAY_SIZE 30
+
+// https://tools.ietf.org/html/rfc1951#page-12
+uint8_t distance_extra_bits[DEFLATE_DISTANCE_EXTRA_BITS_ARRAY_SIZE] = {
+  0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11,
+  11, 12, 12, 13, 13
+};
+
+// Move the mask bit to the right up to 1, then reinit to 128 and increment ptr
+#define INCREMENT_MASK(mask, ptr) (mask = (mask = mask >> 1) ? mask : 128) == 128 && ++ptr;
 
 void usage() {
   fprintf(stderr, "usage: gzip <file>\n");
