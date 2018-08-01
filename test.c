@@ -1,4 +1,5 @@
 #include "gziped.h"
+#include "debug.h"
 
 #define FAIL() { \
   ++totalres; \

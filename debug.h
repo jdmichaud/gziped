@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 #define DEBUG(str) fprintf(stdout, #str"\n");
 #define DVAR(var) fprintf(stdout, #var": %i\n", var);

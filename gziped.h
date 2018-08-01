@@ -30,6 +30,7 @@
 #include <stdint.h>
 #include <time.h>
 #include <string.h>
+#include <limits.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -41,6 +42,7 @@
 #include "debug.h"
 
 #define BUFFER_SIZE 1024
+#define NO_VALUE USHRT_MAX
 
 #define GZIP_HEADER_SIZE  10
 #define GZIP_MAGIC        0x8B1F
@@ -51,6 +53,7 @@
 #define DEFLATE_DYN_HUF_BLOCK_TYPE 2
 #define DEFLATE_CODE_MAX_BIT_LENGTH 32
 #define DEFLATE_ALPHABET_SIZE 288
+#define DEFLATE_END_BLOCK_VALUE 256
 
 // https://tools.ietf.org/html/rfc1952#page-5
 typedef struct header_s {
@@ -310,10 +313,12 @@ void generate_next_codes(uint8_t *bit_counts, uint32_t *next_codes) {
  */
 void generate_dict(const uint8_t *code_lengths, ssize_t size,
                    uint32_t *next_codes, uint16_t *dict) {
+  memset(dict, NO_VALUE, 512 * sizeof (uint16_t));
   for (uint16_t i = 0; i < size; ++i) {
     uint8_t length = code_lengths[i];
 
     uint32_t code = next_codes[length];
+    printf("%u %s (%u)\n", i, tobin(code, length), length);
     uint32_t m = 1 << (length - 1);
     uint16_t index = 0;
     while (m) {
@@ -328,25 +333,35 @@ void generate_dict(const uint8_t *code_lengths, ssize_t size,
 
 void inflate_block(uint8_t **pos, uint8_t *mask,
                    uint16_t *dict, uint8_t *output) {
-  printf("inflate_block called\n");
-  return ;
+  uint16_t index = 0;
+  uint16_t value = 0;
+  uint8_t i = 0;
+  // while (value != DEFLATE_END_BLOCK_VALUE) {
+    do {
+      index <<= 1;
+      index += **pos & *mask ? 2 : 1;
+      if ((i+3) % 4 == 0) printf(" ");
+      printf("%u", **pos & *mask ? 1 : 0);
+      INCREMENT_MASK(*mask, *pos);
+      ++i;
+    } while (i < 32); //while ((value = dict[index]) == NO_VALUE);
+    // printf(" - %u\n", value);
+  // }
 }
 
 void inflate(uint8_t *buf, uint8_t *output) {
   // Generate the static huffman dictionary
   uint16_t static_dict[288];
-  memset(static_dict, -1, 512 * sizeof (uint16_t));
   generate_dict(static_huffman_params.code_lengths, DEFLATE_ALPHABET_SIZE,
     static_huffman_params.next_codes, static_dict);
 
   uint8_t bfinal = 0;
   uint8_t *current_buf = buf;
-  uint8_t mask = 0b1000000;
+  uint8_t mask = 0b10000000;
   uint8_t *current_output = output;
   do {
     bfinal = (*current_buf & mask) ? 1 : 0;
     INCREMENT_MASK(mask, current_buf);
-
     uint8_t btype = *current_buf & mask ? 2 : 0;
     INCREMENT_MASK(mask, current_buf);
     btype |= *current_buf & mask ? 1 : 0;
@@ -364,10 +379,12 @@ void inflate(uint8_t *buf, uint8_t *output) {
         break;
       }
       case DEFLATE_FIX_HUF_BLOCK_TYPE: {
+        printf("DEFLATE_FIX_HUF_BLOCK_TYPE\n");
         inflate_block(&current_buf, &mask, static_dict, output);
         break;
       }
       case DEFLATE_DYN_HUF_BLOCK_TYPE: {
+        printf("DEFLATE_DYN_HUF_BLOCK_TYPE\n");
         uint16_t dict[1024];
         inflate_block(&current_buf, &mask, dict, output);
         break;
