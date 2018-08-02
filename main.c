@@ -1,8 +1,12 @@
+#include <stdio.h>
+#include <stdlib.h>
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 
 #include "gziped.h"
+#include "crc32.h"
 
 void write_file(metadata_t metadata, uint8_t *content) {
   if (metadata.extra_header.fname != NULL) {
@@ -49,6 +53,13 @@ int main(int argc, char **argv) {
 
   uint8_t *inflated = (uint8_t *) malloc(metadata.footer.isize);
   inflate(&buffer[metadata.block_offset], inflated);
+
+  uint32_t crc32 = crc(inflated, metadata.footer.isize);
+  if (crc32 != metadata.footer.crc32) {
+    fprintf(stderr, "error: cyclic redundancy check failed! (0x%08x != 0x%08x)\n",
+      metadata.footer.crc32, crc32);
+    exit(6);
+  }
   write_file(metadata, inflated);
 
   free(inflated);

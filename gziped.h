@@ -228,8 +228,10 @@ void get_metadata(uint8_t *buf, ssize_t size, metadata_t *metadata) {
   memset(&metadata->extra_header, 0, sizeof (extra_header_t));
   uint8_t *pos = get_extra_header(buf, metadata->header, &metadata->extra_header);
   // Footer
-  metadata->footer.crc32 = buf[size - 8];
-  metadata->footer.isize = buf[size - 4];
+  metadata->footer.crc32 = buf[size - 8] | buf[size - 7] << 8 |
+    buf[size - 6] << 16 | buf[size - 5] << 24;
+  metadata->footer.isize = buf[size - 4] | buf[size - 3] << 8 |
+    buf[size - 2] << 16 | buf[size - 1] << 24;
 
   // Sanity checks
   if (metadata->header.magic != GZIP_MAGIC) {
