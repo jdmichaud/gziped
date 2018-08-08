@@ -156,8 +156,19 @@ uint8_t distance_extra_bits[DEFLATE_DISTANCE_EXTRA_BITS_ARRAY_SIZE] = {
   11, 12, 12, 13, 13
 };
 
-// Move the mask bit to the right up to 1, then reinit to 128 and increment ptr
+// Move the mask bit to the left up to 128, then reinit to 1 and increment ptr
 #define INCREMENT_MASK(mask, ptr) (mask = (mask = mask << 1) ? mask : 1) == 1 && ++ptr;
+
+// Retrieve multiple bits
+#define READ(dest, mask, ptr, size) { \
+  dest = 0; \
+  uint8_t _size = size; \
+  while (_size--) { \
+    dest <<= 1; \
+    dest += (*ptr & mask ? 1 : 0); \
+    INCREMENT_MASK(mask, ptr) \
+  } \
+}
 
 void usage() {
   fprintf(stderr, "usage: gzip <file>\n");
