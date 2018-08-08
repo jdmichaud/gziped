@@ -202,6 +202,24 @@ uint8_t test_READ() {
   return totalres;
 }
 
+uint8_t test_distance_static_dictionary() {
+  uint8_t totalres = 0;
+
+  uint16_t distance_static_dict[64];
+  memset(distance_static_dict, -1, 64 * sizeof (uint16_t));
+  generate_dict_from_code_length(static_huffman_params_distance_code_lengths,
+    distance_static_dict, 32);
+
+  if (distance_static_dict[31 + 0] != 0) FAIL();
+  if (distance_static_dict[31 + 1] != 1) FAIL();
+  if (distance_static_dict[31 + 2] != 2) FAIL();
+  if (distance_static_dict[31 + 10] != 10) FAIL();
+  if (distance_static_dict[31 + 13] != 13) FAIL();
+  if (distance_static_dict[31 + 31] != 31) FAIL();
+
+  return totalres;
+}
+
 int main(int argc, char **argv) {
   uint8_t totalres = 0;
 
@@ -212,6 +230,7 @@ int main(int argc, char **argv) {
   totalres += test_static_dict();
   totalres += test_code_length_dict();
   totalres += test_READ();
+  totalres += test_distance_static_dictionary();
 
   return totalres;
 }

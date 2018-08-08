@@ -139,6 +139,16 @@ static_huffman_params_t static_huffman_params = {
   { 0, 0, 0, 0, 0, 0, 0, 0b0000000, 0b00110000, 0b110010000 },
 };
 
+// The static huffman alphabet for distance
+// https://tools.ietf.org/html/rfc1951#page-12
+// As described in the RFC, "Distance codes 0-31 are represented by
+// (fixed-length) 5-bit codes". So we don't really need a dictionary but we will
+// still use one to keep coherent with the dynamic dictionary case.
+uint8_t static_huffman_params_distance_code_lengths[32] = {
+  5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+  5, 5, 5, 5, 5, 5
+};
+
 #define DEFLATE_LENGTH_EXTRA_BITS_ARRAY_SIZE 29
 #define DEFLATE_LENGTH_EXTRA_BITS_ARRAY_OFFSET 257
 
@@ -340,9 +350,29 @@ void generate_dict(const uint8_t *code_lengths, ssize_t size,
       index += code & m ? 2 : 1;
       m >>= 1;
     }
+    // printf("[%u] = %u \n", index, i);
     dict[index] = i;
     next_codes[code_lengths[i]]++;
   }
+}
+
+/**
+ * Short hand function.
+ * @params code_lengths
+ */
+void generate_dict_from_code_length(const uint8_t *code_lengths, uint16_t *dict,
+                                    uint32_t dict_size) {
+  uint8_t length_counts[32];
+  bzero(length_counts, 32);
+  count_by_code_length(code_lengths, 32, length_counts);
+
+  uint32_t next_codes[32];
+  bzero(next_codes, 32 * sizeof (uint32_t));
+  generate_next_codes(length_counts, next_codes);
+
+  memset(dict, -1, dict_size * sizeof (uint16_t));
+  generate_dict(static_huffman_params_distance_code_lengths, 32, next_codes,
+    dict, dict_size);
 }
 
 /**
@@ -362,7 +392,7 @@ void parse_dynamic_tree(uint8_t **pos, uint8_t *mask) {
 }
 
 void inflate_block(uint8_t **pos, uint8_t *mask,
-                   uint16_t *dict, uint8_t *output) {
+                   uint16_t *litdict, uint16_t *distdict, uint8_t *output) {
   uint16_t index = 0;
   uint16_t value = 0;
   uint8_t i = 0;
@@ -373,7 +403,7 @@ void inflate_block(uint8_t **pos, uint8_t *mask,
       index += **pos & *mask ? 2 : 1;
       INCREMENT_MASK(*mask, *pos);
       ++i;
-    } while ((value = dict[index]) == NO_VALUE);
+    } while ((value = litdict[index]) == NO_VALUE);
     if (value < DEFLATE_END_BLOCK_VALUE) {
       *output++ = value;
     }
@@ -382,10 +412,15 @@ void inflate_block(uint8_t **pos, uint8_t *mask,
 }
 
 void inflate(uint8_t *buf, uint8_t *output) {
-  // Generate the static huffman dictionary
+  // Generate the static huffman dictionary for literals/lengths
   uint16_t static_dict[1024];
   generate_dict(static_huffman_params.code_lengths, DEFLATE_ALPHABET_SIZE,
     static_huffman_params.next_codes, static_dict, 1024);
+  // Generate the static huffman dictionary for distances
+  uint16_t distance_static_dict[64];
+  memset(distance_static_dict, -1, 64 * sizeof (uint16_t));
+  generate_dict_from_code_length(static_huffman_params_distance_code_lengths,
+    distance_static_dict, 32);
 
   uint8_t bfinal = 0;
   uint8_t *current_buf = buf;
@@ -412,13 +447,15 @@ void inflate(uint8_t *buf, uint8_t *output) {
       }
       case DEFLATE_FIX_HUF_BLOCK_TYPE: {
         // printf("DEFLATE_FIX_HUF_BLOCK_TYPE\n");
-        inflate_block(&current_buf, &mask, static_dict, output);
+        inflate_block(&current_buf, &mask, static_dict, distance_static_dict,
+          output);
         break;
       }
       case DEFLATE_DYN_HUF_BLOCK_TYPE: {
         // printf("DEFLATE_DYN_HUF_BLOCK_TYPE\n");
         uint16_t dict[1024];
-        inflate_block(&current_buf, &mask, dict, output);
+        uint16_t dist_dict[1024];
+        inflate_block(&current_buf, &mask, dict, dist_dict, output);
         break;
       }
     }
