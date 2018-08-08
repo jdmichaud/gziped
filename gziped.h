@@ -157,7 +157,8 @@ uint8_t distance_extra_bits[DEFLATE_DISTANCE_EXTRA_BITS_ARRAY_SIZE] = {
 };
 
 // Move the mask bit to the left up to 128, then reinit to 1 and increment ptr
-#define INCREMENT_MASK(mask, ptr) (mask = (mask = mask << 1) ? mask : 1) == 1 && ++ptr;
+#define INCREMENT_MASK(mask, ptr) \
+  if ((mask = (mask = mask << 1) ? mask : 1) == 1) ++ptr;
 
 // Retrieve multiple bits
 #define READ(dest, mask, ptr, size) { \
@@ -342,6 +343,22 @@ void generate_dict(const uint8_t *code_lengths, ssize_t size,
     dict[index] = i;
     next_codes[code_lengths[i]]++;
   }
+}
+
+/**
+ * https://tools.ietf.org/html/rfc1951#page-13
+ * Decode the dynamic code and generate a dictionary.
+ * @param pos  [description]
+ * @param mask [description]
+ */
+void parse_dynamic_tree(uint8_t **pos, uint8_t *mask) {
+  // First read HLEN (4 bits), HDIST (5 bits) and HLIT (5 bits)
+  uint8_t hlen;
+  uint8_t hdist;
+  uint8_t hlit;
+  READ(hlen, *mask, *pos, 4);
+  READ(hdist, *mask, *pos, 5);
+  READ(hlit, *mask, *pos, 5);
 }
 
 void inflate_block(uint8_t **pos, uint8_t *mask,
