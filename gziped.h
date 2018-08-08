@@ -269,8 +269,8 @@ void count_by_code_length(const uint8_t *code_lengths, ssize_t size,
 
 /**
  * Generates the starting code for a specific code lengths.
- * if bit_counts = { 0, 1, 1, 2 } the next_codes is { 0, 2, 6 }, representing
- * the following dictionnary:
+ * if length_counts = { 0, 1, 1, 2 } the next_codes is { 0, 2, 6 }, representing
+ * the following dictionary:
  * value code
  * ----- ----
  * A     10  -> A is encoded on two bits, first code is 2 (10)
@@ -281,15 +281,15 @@ void count_by_code_length(const uint8_t *code_lengths, ssize_t size,
  *              length
  * https://tools.ietf.org/html/rfc1951#page-8
  *
- * @param bit_counts bit_counts[N] is the number of code of length N. Its size
+ * @param length_counts length_counts[N] is the number of code of length N. Its size
  * is DEFLATE_CODE_MAX_BIT_LENGTH.
  * @param next_codes  next_codes[N] is the first code of length N. It must be
  * allocated with a minimum size of DEFLATE_CODE_MAX_BIT_LENGTH.
  */
-void generate_next_codes(uint8_t *bit_counts, uint32_t *next_codes) {
+void generate_next_codes(uint8_t *length_counts, uint32_t *next_codes) {
   uint32_t code = 0;
   for (uint8_t nbits = 1; nbits <= DEFLATE_CODE_MAX_BIT_LENGTH; nbits++) {
-    next_codes[nbits] = code = (code + bit_counts[nbits - 1]) << 1;
+    next_codes[nbits] = code = (code + length_counts[nbits - 1]) << 1;
   }
 }
 
@@ -355,7 +355,7 @@ void inflate_block(uint8_t **pos, uint8_t *mask,
 
 void inflate(uint8_t *buf, uint8_t *output) {
   // Generate the static huffman dictionary
-  uint16_t static_dict[288];
+  uint16_t static_dict[1024];
   generate_dict(static_huffman_params.code_lengths, DEFLATE_ALPHABET_SIZE,
     static_huffman_params.next_codes, static_dict);
 

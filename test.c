@@ -87,7 +87,7 @@ uint8_t test_static_dict() {
     if (next_codes[i] != static_huffman_params.next_codes[i]) FAIL()
   }
 
-  uint16_t static_dict[512];
+  uint16_t static_dict[1024];
   memset(static_dict, -1, 512 * sizeof (uint16_t));
   generate_dict(static_huffman_params.code_lengths, DEFLATE_ALPHABET_SIZE,
     static_huffman_params.next_codes, static_dict);
@@ -111,6 +111,54 @@ uint8_t test_static_dict() {
   return totalres;
 }
 
+uint8_t test_code_length_dict() {
+  uint8_t totalres = 0;
+
+  uint8_t code_lengths[19] = {
+    3, 0, 0, 0, 4, 4, 3, 2, 3, 3, 4, 5, 0, 0, 0, 0, 6, 7, 7
+  };
+  uint8_t length_counts[32];
+  bzero(length_counts, 32);
+  count_by_code_length(code_lengths, 19, length_counts);
+
+  uint32_t next_codes[32];
+  bzero(next_codes, 32 * sizeof (uint32_t));
+  generate_next_codes(length_counts, next_codes);
+
+  uint16_t code_length_dict[256];
+  memset(code_length_dict, -1, 128 * sizeof (uint16_t));
+  generate_dict(code_lengths, 19, next_codes, code_length_dict);
+
+  // 010: 0
+  // 1100: 4
+  // 1101: 5
+  // 011: 6
+  // 00: 7
+  // 100: 8
+  // 101: 9
+  // 1110: 10
+  // 11110: 11
+  // 111110: 16
+  // 1111110: 17
+  // 1111111: 18
+
+  if (code_length_dict[9] != 0) FAIL();
+  if (code_length_dict[27] != 4) FAIL();
+  if (code_length_dict[28] != 5) FAIL();
+  if (code_length_dict[10] != 6) FAIL();
+  if (code_length_dict[3] != 7) FAIL();
+  if (code_length_dict[11] != 8) FAIL();
+  if (code_length_dict[12] != 9) FAIL();
+  if (code_length_dict[29] != 10) FAIL();
+  if (code_length_dict[61] != 11) FAIL();
+  if (code_length_dict[125] != 16) FAIL();
+  if (code_length_dict[253] != 17) FAIL();
+  if (code_length_dict[254] != 18) FAIL();
+
+  return totalres;
+}
+
+
 int main(int argc, char **argv) {
   uint8_t totalres = 0;
 
@@ -118,7 +166,8 @@ int main(int argc, char **argv) {
   // totalres += test_generate_next_codes();
   // totalres += test_tobin();
   // totalres += test_generate_dict();
-  totalres += test_static_dict();
+  // totalres += test_static_dict();
+  totalres += test_code_length_dict();
 
   return totalres;
 }
