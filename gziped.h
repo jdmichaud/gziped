@@ -314,11 +314,11 @@ void generate_next_codes(uint8_t *length_counts, uint32_t *next_codes) {
  * { -1, -1, -1, B, -1, C, -1, -1, -1, A, -1, -1, -1, -1, -1 }
  */
 void generate_dict(const uint8_t *code_lengths, ssize_t size,
-                   uint32_t *next_codes, uint16_t *dict) {
-  memset(dict, NO_VALUE, 512 * sizeof (uint16_t));
+                   uint32_t *next_codes, uint16_t *dict, uint16_t dict_size) {
+  memset(dict, NO_VALUE, dict_size * sizeof (uint16_t));
   for (uint16_t i = 0; i < size; ++i) {
     uint8_t length = code_lengths[i];
-
+    if (length == 0) continue;
     uint32_t code = next_codes[length];
     // printf("%u %s (%u)\n", i, tobin(code, length), length);
     uint32_t m = 1 << (length - 1);
@@ -357,7 +357,7 @@ void inflate(uint8_t *buf, uint8_t *output) {
   // Generate the static huffman dictionary
   uint16_t static_dict[1024];
   generate_dict(static_huffman_params.code_lengths, DEFLATE_ALPHABET_SIZE,
-    static_huffman_params.next_codes, static_dict);
+    static_huffman_params.next_codes, static_dict, 1024);
 
   uint8_t bfinal = 0;
   uint8_t *current_buf = buf;

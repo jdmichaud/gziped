@@ -58,7 +58,7 @@ uint8_t test_generate_dict() {
   uint16_t dict[32];
   memset(dict, -1, 32 * sizeof (uint16_t));
 
-  generate_dict(code_lengths, 8, next_codes, dict);
+  generate_dict(code_lengths, 8, next_codes, dict, 32);
 
   if (dict[3]  != 5) FAIL(); // F: "00"
   if (dict[9]  != 0) FAIL(); // A: "010"
@@ -88,9 +88,9 @@ uint8_t test_static_dict() {
   }
 
   uint16_t static_dict[1024];
-  memset(static_dict, -1, 512 * sizeof (uint16_t));
+  memset(static_dict, -1, 1024 * sizeof (uint16_t));
   generate_dict(static_huffman_params.code_lengths, DEFLATE_ALPHABET_SIZE,
-    static_huffman_params.next_codes, static_dict);
+    static_huffman_params.next_codes, static_dict, 1024);
 
   // Python to generate index in binary heap based on huffman code
   // def c(a):
@@ -111,6 +111,8 @@ uint8_t test_static_dict() {
   return totalres;
 }
 
+// Base on an example from
+// http://www.infinitepartitions.com/art001.html?_sm_nck=1
 uint8_t test_code_length_dict() {
   uint8_t totalres = 0;
 
@@ -126,8 +128,8 @@ uint8_t test_code_length_dict() {
   generate_next_codes(length_counts, next_codes);
 
   uint16_t code_length_dict[256];
-  memset(code_length_dict, -1, 128 * sizeof (uint16_t));
-  generate_dict(code_lengths, 19, next_codes, code_length_dict);
+  memset(code_length_dict, -1, 256 * sizeof (uint16_t));
+  generate_dict(code_lengths, 19, next_codes, code_length_dict, 256);
 
   // 010: 0
   // 1100: 4
@@ -162,11 +164,11 @@ uint8_t test_code_length_dict() {
 int main(int argc, char **argv) {
   uint8_t totalres = 0;
 
-  // totalres += test_count_by_code_length();
-  // totalres += test_generate_next_codes();
-  // totalres += test_tobin();
-  // totalres += test_generate_dict();
-  // totalres += test_static_dict();
+  totalres += test_count_by_code_length();
+  totalres += test_generate_next_codes();
+  totalres += test_tobin();
+  totalres += test_generate_dict();
+  totalres += test_static_dict();
   totalres += test_code_length_dict();
 
   return totalres;
