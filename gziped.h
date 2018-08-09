@@ -189,7 +189,7 @@ uint8_t distance_extra_bits[DEFLATE_DISTANCE_EXTRA_BITS_ARRAY_SIZE] = {
 // Retrieve multiple bits.
 // 76543210 FEDCBA98
 // ——▶——▶—— —————▶——
-//  3 2  1  5   4
+//  3 2  1    5   3
 // result:
 //  210 543 9876 FEDCB
 #define READ(dest, mask, ptr, size) { \
@@ -481,14 +481,11 @@ void inflate(uint8_t *buf, uint8_t *output) {
   uint8_t mask = 1; // the integer used as mask to read bit by bit
   uint8_t *current_output = output; // the pointer to the current positionin the output
   do {
-    bfinal = (*current_buf & mask) ? 1 : 0;
-    INCREMENT_MASK(mask, current_buf);
+    READ(bfinal, mask, current_buf, 1);
     // Anything that is not inside the block is read from left to right.
     // See https://tools.ietf.org/html/rfc1951#page-6
-    uint8_t btype = *current_buf & mask ? 1 : 0; // The buffer type
-    INCREMENT_MASK(mask, current_buf);
-    btype |= *current_buf & mask ? 2 : 0;
-    INCREMENT_MASK(mask, current_buf);
+    uint8_t btype; // The buffer type
+    READ(btype, mask, current_buf, 2);
 
     switch (btype) {
       case DEFLATE_LITERAL_BLOCK_TYPE: {
