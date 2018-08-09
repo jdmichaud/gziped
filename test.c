@@ -160,7 +160,7 @@ uint8_t test_code_length_dict() {
   return totalres;
 }
 
-uint8_t test_READ() {
+uint8_t test_READ_INV() {
   uint8_t totalres = 0;
 
   // buffer: 11101010 11000011 10100010
@@ -171,31 +171,31 @@ uint8_t test_READ() {
 
   uint8_t dest = 255;
 
-  READ(dest, mask, ptr, 4);
+  READ_INV(dest, mask, ptr, 4);
   if (dest != 0b0101) FAIL();
 
-  READ(dest, mask, ptr, 4);
+  READ_INV(dest, mask, ptr, 4);
   if (dest != 0b0111) FAIL();
 
-  READ(dest, mask, ptr, 2);
+  READ_INV(dest, mask, ptr, 2);
   if (dest != 0b11) FAIL();
 
-  READ(dest, mask, ptr, 4);
+  READ_INV(dest, mask, ptr, 4);
   if (dest != 0b0000) FAIL();
 
-  READ(dest, mask, ptr, 2);
+  READ_INV(dest, mask, ptr, 2);
   if (dest != 0b11) FAIL();
 
-  READ(dest, mask, ptr, 3);
+  READ_INV(dest, mask, ptr, 3);
   if (dest != 0b010) FAIL();
 
-  READ(dest, mask, ptr, 1);
+  READ_INV(dest, mask, ptr, 1);
   if (dest != 0b0) FAIL();
 
-  READ(dest, mask, ptr, 1);
+  READ_INV(dest, mask, ptr, 1);
   if (dest != 0b0) FAIL();
 
-  READ(dest, mask, ptr, 3);
+  READ_INV(dest, mask, ptr, 3);
   if (dest != 0b101) FAIL();
 
 
@@ -229,7 +229,7 @@ int main(int argc, char **argv) {
   totalres += test_generate_dict();
   totalres += test_static_dict();
   totalres += test_code_length_dict();
-  totalres += test_READ();
+  totalres += test_READ_INV();
   totalres += test_distance_static_dictionary();
 
   return totalres;

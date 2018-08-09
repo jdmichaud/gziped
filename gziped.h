@@ -170,8 +170,13 @@ uint8_t distance_extra_bits[DEFLATE_DISTANCE_EXTRA_BITS_ARRAY_SIZE] = {
 #define INCREMENT_MASK(mask, ptr) \
   if ((mask = (mask = mask << 1) ? mask : 1) == 1) ++ptr;
 
-// Retrieve multiple bits
-#define READ(dest, mask, ptr, size) { \
+// Retrieve multiple bits.
+// 76543210 FEDCBA98
+// ◀——————— ◀———————
+//     1        2
+// result:
+//  01234567 89ABCDEF
+#define READ_INV(dest, mask, ptr, size) { \
   dest = 0; \
   uint8_t _size = size; \
   while (_size--) { \
@@ -386,9 +391,9 @@ void parse_dynamic_tree(uint8_t **pos, uint8_t *mask) {
   uint8_t hlen;
   uint8_t hdist;
   uint8_t hlit;
-  READ(hlen, *mask, *pos, 4);
-  READ(hdist, *mask, *pos, 5);
-  READ(hlit, *mask, *pos, 5);
+  READ_INV(hlen, *mask, *pos, 4);
+  READ_INV(hdist, *mask, *pos, 5);
+  READ_INV(hlit, *mask, *pos, 5);
 }
 
 // TODO: break this function down into smaller functions
@@ -412,7 +417,7 @@ void inflate_block(uint8_t **pos, uint8_t *mask,
       // length code
       uint8_t nb_extra_bits = length_extra_bits[value - DEFLATE_END_BLOCK_VALUE - 1];
       uint8_t extra_bits = 0;
-      READ(extra_bits, *mask, *pos, nb_extra_bits);
+      READ_INV(extra_bits, *mask, *pos, nb_extra_bits);
       // Value 257 corresponds to a length of 3 (257 - 254 = 3)
       // See https://tools.ietf.org/html/rfc1951#page-12
       uint32_t length = value - 254 + extra_bits;
@@ -427,7 +432,7 @@ void inflate_block(uint8_t **pos, uint8_t *mask,
       } while ((distance = distdict[index]) == NO_VALUE);
       nb_extra_bits = distance_extra_bits[distance];
       extra_bits = 0;
-      READ(extra_bits, *mask, *pos, nb_extra_bits);
+      READ_INV(extra_bits, *mask, *pos, nb_extra_bits);
       // Value 0 corresponds to a ditance of 1 (0 + 1 = 1)
       // See https://tools.ietf.org/html/rfc1951#page-12
       distance += extra_bits + 1;
@@ -453,14 +458,16 @@ void inflate(uint8_t *buf, uint8_t *output) {
   generate_dict_from_code_length(static_huffman_params_distance_code_lengths,
     distance_static_dict, 32);
 
-  uint8_t bfinal = 0;
-  uint8_t *current_buf = buf;
-  uint8_t mask = 1;
-  uint8_t *current_output = output;
+  uint8_t bfinal = 0; // 1 if this is the final block
+  uint8_t *current_buf = buf; // the pointer to the current position in the buffer
+  uint8_t mask = 1; // the integer used as mask to read bit by bit
+  uint8_t *current_output = output; // the pointer to the current positionin the output
   do {
     bfinal = (*current_buf & mask) ? 1 : 0;
     INCREMENT_MASK(mask, current_buf);
-    uint8_t btype = *current_buf & mask ? 1 : 0;
+    // Anything that is not inside the block is read from left to right.
+    // See https://tools.ietf.org/html/rfc1951#page-6
+    uint8_t btype = *current_buf & mask ? 1 : 0; // The buffer type
     INCREMENT_MASK(mask, current_buf);
     btype |= *current_buf & mask ? 2 : 0;
     INCREMENT_MASK(mask, current_buf);
