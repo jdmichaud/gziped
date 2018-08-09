@@ -391,6 +391,7 @@ void parse_dynamic_tree(uint8_t **pos, uint8_t *mask) {
   READ(hlit, *mask, *pos, 5);
 }
 
+// TODO: break this function down into smaller functions
 void inflate_block(uint8_t **pos, uint8_t *mask,
                    uint16_t *litdict, uint16_t *distdict, uint8_t *output) {
   uint16_t index = 0;
@@ -406,6 +407,36 @@ void inflate_block(uint8_t **pos, uint8_t *mask,
     } while ((value = litdict[index]) == NO_VALUE);
     if (value < DEFLATE_END_BLOCK_VALUE) {
       *output++ = value;
+    }
+    if (value > DEFLATE_END_BLOCK_VALUE) {
+      // length code
+      uint8_t nb_extra_bits = length_extra_bits[value - DEFLATE_END_BLOCK_VALUE - 1];
+      uint8_t extra_bits = 0;
+      READ(extra_bits, *mask, *pos, nb_extra_bits);
+      // Value 257 corresponds to a length of 3 (257 - 254 = 3)
+      // See https://tools.ietf.org/html/rfc1951#page-12
+      uint32_t length = value - 254 + extra_bits;
+      // Now read the distance
+      uint32_t distance = 0;
+      index = 0;
+      do {
+        index <<= 1;
+        index += **pos & *mask ? 2 : 1;
+        INCREMENT_MASK(*mask, *pos);
+        ++i;
+      } while ((distance = distdict[index]) == NO_VALUE);
+      nb_extra_bits = distance_extra_bits[distance];
+      extra_bits = 0;
+      READ(extra_bits, *mask, *pos, nb_extra_bits);
+      // Value 0 corresponds to a ditance of 1 (0 + 1 = 1)
+      // See https://tools.ietf.org/html/rfc1951#page-12
+      distance += extra_bits + 1;
+      if (length > distance) {
+        fprintf(stderr, "error: corrupted gzip file\n");
+        exit(1);
+      }
+      memcpy(output, output - distance, length);
+      output += length;
     }
     index = 0;
   }
