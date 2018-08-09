@@ -19,10 +19,10 @@ HEADERS = $(wildcard *.h)
 .PRECIOUS: $(TARGET) $(OBJECTS)
 
 $(TARGET): $(OBJECTS)
-	$(CC) $(OBJECTS) -Wall $(LIBS) -o $@
+	$(CC) $(OBJECTS) $(CFLAGS) $(LIBS) -o $@
 
 $(TEST_TARGET): $(TEST_OBJECTS)
-	$(CC) $(TEST_OBJECTS) -Wall $(LIBS) -o $@
+	$(CC) $(TEST_OBJECTS) $(CFLAGS) $(LIBS) -o $@
 
 clean:
 	-rm -f *.o

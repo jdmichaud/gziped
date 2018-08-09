@@ -30,6 +30,7 @@
 #include <stdint.h>
 #include <time.h>
 #include <string.h>
+#include <strings.h>
 #include <limits.h>
 
 #include <sys/types.h>
@@ -40,6 +41,9 @@
 #include <sys/mman.h>
 
 #include "debug.h"
+
+// To quiet the pesky compiler
+char *strndup(const char *s, size_t n);
 
 #define BUFFER_SIZE 1024
 #define NO_VALUE USHRT_MAX
