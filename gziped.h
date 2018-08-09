@@ -170,7 +170,7 @@ uint8_t distance_extra_bits[DEFLATE_DISTANCE_EXTRA_BITS_ARRAY_SIZE] = {
 #define INCREMENT_MASK(mask, ptr) \
   if ((mask = (mask = mask << 1) ? mask : 1) == 1) ++ptr;
 
-// Retrieve multiple bits.
+// Retrieve multiple bits in inverse order.
 // 76543210 FEDCBA98
 // ◀——————— ◀———————
 //     1        2
@@ -185,6 +185,24 @@ uint8_t distance_extra_bits[DEFLATE_DISTANCE_EXTRA_BITS_ARRAY_SIZE] = {
     INCREMENT_MASK(mask, ptr) \
   } \
 }
+
+// Retrieve multiple bits.
+// 76543210 FEDCBA98
+// ——▶——▶—— —————▶——
+//  3 2  1  5   4
+// result:
+//  210 543 9876 FEDCB
+#define READ(dest, mask, ptr, size) { \
+  dest = 0; \
+  uint32_t _pos = 1; \
+  uint8_t _size = size; \
+  while (_size--) { \
+    dest |= (*ptr & mask ? _pos : 0); \
+    _pos <<= 1; \
+    INCREMENT_MASK(mask, ptr) \
+  } \
+}
+
 
 void usage() {
   fprintf(stderr, "usage: gzip <file>\n");

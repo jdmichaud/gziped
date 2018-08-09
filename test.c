@@ -202,6 +202,41 @@ uint8_t test_READ_INV() {
   return totalres;
 }
 
+uint8_t test_READ() {
+  uint8_t totalres = 0;
+
+  // buffer: 11101010 11000011 10100010
+  // order:  76543210    ...98
+  uint8_t buffer[3] = { 234, 195, 162 };
+  uint8_t *ptr = buffer;
+  uint8_t mask = 1;
+
+  uint8_t dest = 255;
+
+  READ(dest, mask, ptr, 4);
+  if (dest != 0b1010) FAIL();
+
+  READ(dest, mask, ptr, 8);
+  if (dest != 0b00111110) FAIL();
+
+  READ(dest, mask, ptr, 2);
+  if (dest != 0b00) FAIL();
+
+  READ(dest, mask, ptr, 2);
+  if (dest != 0b11) FAIL();
+
+  READ(dest, mask, ptr, 4);
+  if (dest != 0b0010) FAIL();
+
+  READ(dest, mask, ptr, 1);
+  if (dest != 0b0) FAIL();
+
+  READ(dest, mask, ptr, 3);
+  if (dest != 0b101) FAIL();
+
+  return totalres;
+}
+
 uint8_t test_distance_static_dictionary() {
   uint8_t totalres = 0;
 
@@ -230,6 +265,7 @@ int main(int argc, char **argv) {
   totalres += test_static_dict();
   totalres += test_code_length_dict();
   totalres += test_READ_INV();
+  totalres += test_READ();
   totalres += test_distance_static_dictionary();
 
   return totalres;
