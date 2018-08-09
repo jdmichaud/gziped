@@ -2,7 +2,7 @@ TARGET = gziped
 TEST_TARGET = test
 LIBS =
 CC = gcc
-CFLAGS = -g -Wall
+CFLAGS = -std=c99 -g -Wall
 
 .PHONY: default all clean
 
