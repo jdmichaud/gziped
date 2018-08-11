@@ -403,7 +403,7 @@ void generate_dict_from_code_length(const uint8_t *code_lengths,
   uint32_t next_codes[DEFLATE_CODE_MAX_BIT_LENGTH];
   generate_next_codes(length_counts, next_codes);
 
-  generate_dict(static_huffman_params_distance_code_lengths, length_counts_size,
+  generate_dict(code_lengths, length_counts_size,
     next_codes, dict, dict_size);
 }
 
