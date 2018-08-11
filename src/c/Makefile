@@ -2,15 +2,17 @@ TARGET = gziped
 TEST_TARGET = test
 LIBS =
 CC = gcc
-CFLAGS = -std=c99 -g -Wall
+CFLAGS = -std=c99 -ggdb3 -Wall
+LDFALGS = -L./
 
 .PHONY: default all clean
 
 default: $(TARGET)
 all: default
+re: clean all
 
-OBJECTS = main.c
-TEST_OBJECTS = test.c
+OBJECTS = main.o
+TEST_OBJECTS = test.o
 HEADERS = $(wildcard *.h)
 
 %.o: %.c $(HEADERS)
@@ -19,10 +21,10 @@ HEADERS = $(wildcard *.h)
 .PRECIOUS: $(TARGET) $(OBJECTS)
 
 $(TARGET): $(OBJECTS)
-	$(CC) $(OBJECTS) $(CFLAGS) $(LIBS) -o $@
+	$(CC) $(LDFALGS) $(OBJECTS) $(LIBS) -o $@
 
 $(TEST_TARGET): $(TEST_OBJECTS)
-	$(CC) $(TEST_OBJECTS) $(CFLAGS) $(LIBS) -o $@
+	$(CC) $(LDFALGS) $(TEST_OBJECTS) $(LIBS) -o $@
 
 clean:
 	-rm -f *.o
