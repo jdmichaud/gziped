@@ -148,7 +148,9 @@ static_huffman_params_t static_huffman_params = {
 // As described in the RFC, "Distance codes 0-31 are represented by
 // (fixed-length) 5-bit codes". So we don't really need a dictionary but we will
 // still use one to keep coherent with the dynamic dictionary case.
-uint8_t static_huffman_params_distance_code_lengths[32] = {
+#define DEFLATE_STATIC_DISTANCE_CODE_LENGTHS_SIZE 32
+#define DEFLATE_SDCLS DEFLATE_STATIC_DISTANCE_CODE_LENGTHS_SIZE
+uint8_t static_huffman_params_distance_code_lengths[DEFLATE_SDCLS] = {
   5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
   5, 5, 5, 5, 5, 5
 };
@@ -207,6 +209,7 @@ uint8_t distance_extra_bits[DEFLATE_DISTANCE_EXTRA_BITS_ARRAY_SIZE] = {
   } \
 }
 
+typedef uint16_t *dict_t;
 
 void usage() {
   fprintf(stderr, "usage: gzip <file>\n");
@@ -214,7 +217,8 @@ void usage() {
 
 void print_metadata(metadata_t metadata) {
   fprintf(stdout, "magic: 0x%04x\n", metadata.header.magic);
-  fprintf(stdout, "cm: 0x%02x (%s)\n", metadata.header.cm, metadata.header.cm == 8 ? "DEFLATE" : "");
+  fprintf(stdout, "cm: 0x%02x (%s)\n",
+    metadata.header.cm, metadata.header.cm == 8 ? "DEFLATE" : "");
   fprintf(stdout, "flg: ");
   fprintf(stdout, "%s", metadata.header.flg & FTEXT ? "FTEXT " : "");
   fprintf(stdout, "%s", metadata.header.flg & FHCRC ? "FHCRC " : "");
@@ -225,12 +229,15 @@ void print_metadata(metadata_t metadata) {
   long int time = metadata.header.mtime;
   fprintf(stdout, "mtime: %s", ctime(&time));
   fprintf(stdout, "xfl: 0x%02x\n", metadata.header.xfl);
-  fprintf(stdout, "os: %s\n", metadata.header.os < 14 ? OS[metadata.header.os] : "unknown");
+  fprintf(stdout, "os: %s\n",
+    metadata.header.os < 14 ? OS[metadata.header.os] : "unknown");
 
   if (metadata.header.flg & FNAME)
-    fprintf(stdout, "filename: %s\n", metadata.extra_header.fname ? metadata.extra_header.fname : "");
+    fprintf(stdout, "filename: %s\n",
+      metadata.extra_header.fname ? metadata.extra_header.fname : "");
   if (metadata.header.flg & FCOMMENT)
-    fprintf(stdout, "comment: %s\n", metadata.extra_header.fcomment ? metadata.extra_header.fcomment : "");
+    fprintf(stdout, "comment: %s\n",
+      metadata.extra_header.fcomment ? metadata.extra_header.fcomment : "");
   if (metadata.header.flg & FHCRC)
     fprintf(stdout, "crc16: 0x%02x\n", metadata.extra_header.crc16);
 
@@ -310,7 +317,7 @@ void get_metadata(uint8_t *buf, ssize_t size, metadata_t *metadata) {
  */
 void count_by_code_length(const uint8_t *code_lengths, ssize_t size,
                           uint8_t *length_counts) {
-  memset(length_counts, 0, DEFLATE_CODE_MAX_BIT_LENGTH * sizeof (uint8_t));
+  bzero(length_counts, DEFLATE_CODE_MAX_BIT_LENGTH * sizeof (uint8_t));
   for (; size > 0; --size) {
     length_counts[code_lengths[size - 1]]++;
   }
@@ -330,13 +337,14 @@ void count_by_code_length(const uint8_t *code_lengths, ssize_t size,
  *              length
  * https://tools.ietf.org/html/rfc1951#page-8
  *
- * @param length_counts length_counts[N] is the number of code of length N. Its size
- * is DEFLATE_CODE_MAX_BIT_LENGTH.
+ * @param length_counts length_counts[N] is the number of code of length N.
+ * Its size is DEFLATE_CODE_MAX_BIT_LENGTH.
  * @param next_codes  next_codes[N] is the first code of length N. It must be
  * allocated with a minimum size of DEFLATE_CODE_MAX_BIT_LENGTH.
  */
 void generate_next_codes(uint8_t *length_counts, uint32_t *next_codes) {
   uint32_t code = 0;
+  bzero(next_codes, DEFLATE_CODE_MAX_BIT_LENGTH * sizeof (uint32_t));
   for (uint8_t nbits = 1; nbits <= DEFLATE_CODE_MAX_BIT_LENGTH; nbits++) {
     next_codes[nbits] = code = (code + length_counts[nbits - 1]) << 1;
   }
@@ -363,7 +371,7 @@ void generate_next_codes(uint8_t *length_counts, uint32_t *next_codes) {
  * { -1, -1, -1, B, -1, C, -1, -1, -1, A, -1, -1, -1, -1, -1 }
  */
 void generate_dict(const uint8_t *code_lengths, ssize_t size,
-                   uint32_t *next_codes, uint16_t *dict, uint16_t dict_size) {
+                   uint32_t *next_codes, dict_t dict, uint16_t dict_size) {
   memset(dict, NO_VALUE, dict_size * sizeof (uint16_t));
   for (uint16_t i = 0; i < size; ++i) {
     uint8_t length = code_lengths[i];
@@ -384,22 +392,50 @@ void generate_dict(const uint8_t *code_lengths, ssize_t size,
 }
 
 /**
- * Short hand function.
- * @params code_lengths
+ * Shorthand function.
  */
-void generate_dict_from_code_length(const uint8_t *code_lengths, uint16_t *dict,
+void generate_dict_from_code_length(const uint8_t *code_lengths,
+                                    uint8_t length_counts_size, dict_t dict,
                                     uint32_t dict_size) {
-  uint8_t length_counts[32];
-  bzero(length_counts, 32);
-  count_by_code_length(code_lengths, 32, length_counts);
+  uint8_t length_counts[DEFLATE_CODE_MAX_BIT_LENGTH];
+  count_by_code_length(code_lengths, length_counts_size, length_counts);
 
-  uint32_t next_codes[32];
-  bzero(next_codes, 32 * sizeof (uint32_t));
+  uint32_t next_codes[DEFLATE_CODE_MAX_BIT_LENGTH];
   generate_next_codes(length_counts, next_codes);
 
-  memset(dict, -1, dict_size * sizeof (uint16_t));
-  generate_dict(static_huffman_params_distance_code_lengths, 32, next_codes,
-    dict, dict_size);
+  generate_dict(static_huffman_params_distance_code_lengths, length_counts_size,
+    next_codes, dict, dict_size);
+}
+
+/**
+ * Decode an input of size n according to a dictionary and write the values in
+ * the output,
+ * @param buf         the input buffer with huffman cdoes
+ * @param mask        the position in the buffer
+ * @param output_size the output size (number of values to decode from input)
+ * @param dict        the huffman dictionary
+ * @param output      the output buffer. Shall be allocated to the proper size.
+ */
+void ndecode(uint8_t **buf, uint8_t *mask, size_t input_size,
+             dict_t dict, uint8_t *output) {
+  uint16_t index = 0;
+  uint16_t value = 0;
+  uint8_t i = 0;
+
+  while (input_size) {
+    do {
+      index <<= 1;
+      index += **buf & *mask ? 2 : 1;
+      // printf("%u", **buf & *mask ? 1 : 0);
+      INCREMENT_MASK(*mask, *buf);
+      ++i;
+    } while ((value = dict[index]) == NO_VALUE);
+    // printf("\nfound %u at %u\n", value, index);
+    *output++ = value;
+    index = 0;
+    i = 0;
+    input_size--;
+  }
 }
 
 /**
@@ -408,29 +444,47 @@ void generate_dict_from_code_length(const uint8_t *code_lengths, uint16_t *dict,
  * @param pos  [description]
  * @param mask [description]
  */
-void parse_dynamic_tree(uint8_t **pos, uint8_t *mask) {
+void parse_dynamic_tree(uint8_t **buf, uint8_t *mask) {
   // First read HLEN (4 bits), HDIST (5 bits) and HLIT (5 bits)
   uint8_t hlen;
   uint8_t hdist;
   uint8_t hlit;
-  READ_INV(hlen, *mask, *pos, 4);
-  READ_INV(hdist, *mask, *pos, 5);
-  READ_INV(hlit, *mask, *pos, 5);
+  READ_INV(hlit, *mask, *buf, 5);
+  READ_INV(hdist, *mask, *buf, 5);
+  READ_INV(hlen, *mask, *buf, 4);
+  printf("hlen %u hdist %u hlit %u\n", hlen, hdist, hlit);
+  // Read code lengths code. There will be (HLEN + 4) * 3.
+  uint8_t code_lengths_lengths[19];
+  bzero(code_lengths_lengths, 19 * sizeof (uint8_t));
+  for (uint8_t i = 0; i < hlen + 4; ++i) {
+    READ_INV(code_lengths_lengths[i], *mask, *buf, 3);
+    printf("code length code[%u] %u\n", i, code_lengths_lengths[i]);
+  }
+  uint16_t dict[256];
+  generate_dict_from_code_length(code_lengths_lengths, 19, dict, 256);
+  // for (int i = 0; i < 256; ++i) {
+  //   printf("dict[%u] = %u\n", i, dict[i]);
+  // }
+  // Read the HLIT code length for the literal/length dynamic dictionary
+  uint8_t literal_lengths[287];
+  bzero(literal_lengths, 287 * sizeof (uint8_t));
+  for (int i = 0; i < hlit + 257; ++i) {
+    
+  }
+  printf("parse_dynamic_tree end\n");
 }
 
 // TODO: break this function down into smaller functions
-void inflate_block(uint8_t **pos, uint8_t *mask,
-                   uint16_t *litdict, uint16_t *distdict, uint8_t *output) {
+void inflate_block(uint8_t **buf, uint8_t *mask,
+                   dict_t litdict, dict_t distdict, uint8_t *output) {
   uint16_t index = 0;
   uint16_t value = 0;
-  uint8_t i = 0;
 
   while (value != DEFLATE_END_BLOCK_VALUE) {
     do {
       index <<= 1;
-      index += **pos & *mask ? 2 : 1;
-      INCREMENT_MASK(*mask, *pos);
-      ++i;
+      index += **buf & *mask ? 2 : 1;
+      INCREMENT_MASK(*mask, *buf);
     } while ((value = litdict[index]) == NO_VALUE);
     if (value < DEFLATE_END_BLOCK_VALUE) {
       *output++ = value;
@@ -439,7 +493,7 @@ void inflate_block(uint8_t **pos, uint8_t *mask,
       // length code
       uint8_t nb_extra_bits = length_extra_bits[value - DEFLATE_END_BLOCK_VALUE - 1];
       uint8_t extra_bits = 0;
-      READ_INV(extra_bits, *mask, *pos, nb_extra_bits);
+      READ_INV(extra_bits, *mask, *buf, nb_extra_bits);
       // Value 257 corresponds to a length of 3 (257 - 254 = 3)
       // See https://tools.ietf.org/html/rfc1951#page-12
       uint32_t length = value - 254 + extra_bits;
@@ -448,13 +502,12 @@ void inflate_block(uint8_t **pos, uint8_t *mask,
       index = 0;
       do {
         index <<= 1;
-        index += **pos & *mask ? 2 : 1;
-        INCREMENT_MASK(*mask, *pos);
-        ++i;
+        index += **buf & *mask ? 2 : 1;
+        INCREMENT_MASK(*mask, *buf);
       } while ((distance = distdict[index]) == NO_VALUE);
       nb_extra_bits = distance_extra_bits[distance];
       extra_bits = 0;
-      READ_INV(extra_bits, *mask, *pos, nb_extra_bits);
+      READ_INV(extra_bits, *mask, *buf, nb_extra_bits);
       // Value 0 corresponds to a ditance of 1 (0 + 1 = 1)
       // See https://tools.ietf.org/html/rfc1951#page-12
       distance += extra_bits + 1;
@@ -478,7 +531,7 @@ void inflate(uint8_t *buf, uint8_t *output) {
   uint16_t distance_static_dict[64];
   memset(distance_static_dict, -1, 64 * sizeof (uint16_t));
   generate_dict_from_code_length(static_huffman_params_distance_code_lengths,
-    distance_static_dict, 32);
+    32, distance_static_dict, 32);
 
   uint8_t bfinal = 0; // 1 if this is the final block
   uint8_t *current_buf = buf; // the pointer to the current position in the buffer
@@ -503,20 +556,21 @@ void inflate(uint8_t *buf, uint8_t *output) {
         break;
       }
       case DEFLATE_FIX_HUF_BLOCK_TYPE: {
-        // printf("DEFLATE_FIX_HUF_BLOCK_TYPE\n");
+        printf("DEFLATE_FIX_HUF_BLOCK_TYPE\n");
         inflate_block(&current_buf, &mask, static_dict, distance_static_dict,
           output);
         break;
       }
       case DEFLATE_DYN_HUF_BLOCK_TYPE: {
-        // printf("DEFLATE_DYN_HUF_BLOCK_TYPE\n");
+        printf("DEFLATE_DYN_HUF_BLOCK_TYPE\n");
         uint16_t dict[1024];
         uint16_t dist_dict[1024];
-        inflate_block(&current_buf, &mask, dict, dist_dict, output);
+        parse_dynamic_tree(&current_buf, &mask);
+        exit(0);
+        // inflate_block(&current_buf, &mask, dict, dist_dict, output);
         break;
       }
     }
     return;
   } while (bfinal != 1);
 }
-

@@ -243,7 +243,7 @@ uint8_t test_distance_static_dictionary() {
   uint16_t distance_static_dict[64];
   memset(distance_static_dict, -1, 64 * sizeof (uint16_t));
   generate_dict_from_code_length(static_huffman_params_distance_code_lengths,
-    distance_static_dict, 32);
+    DEFLATE_STATIC_DISTANCE_CODE_LENGTHS_SIZE, distance_static_dict, 32);
 
   if (distance_static_dict[31 + 0] != 0) FAIL();
   if (distance_static_dict[31 + 1] != 1) FAIL();
@@ -251,6 +251,44 @@ uint8_t test_distance_static_dictionary() {
   if (distance_static_dict[31 + 10] != 10) FAIL();
   if (distance_static_dict[31 + 13] != 13) FAIL();
   if (distance_static_dict[31 + 31] != 31) FAIL();
+
+  return totalres;
+}
+
+uint8_t test_ndecode() {
+  uint8_t totalres = 0;
+
+  // 00101100 01101001 10100111 00100010
+  // 00 (3) -> 42
+  // 110 (13) -> 66
+  // 100 (11) -> 7
+  // 101 (12) -> 88
+  // 01 (4) -> 5
+  uint8_t *input = malloc(4 * sizeof (uint8_t));
+  input[0] = 44; input[1] =  105; input[2] = 167; input[3] = 34;
+  uint8_t mask = 1;
+  uint8_t input_size = 13;
+  uint16_t dict[16] = {
+  // 0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
+    -1, -1, -1, 42,  5, -1, -1, -1, -1, -1, -1,  7, 88, 66, -1, -1
+  };
+  uint8_t output[13];
+
+  ndecode(&input, &mask, input_size, dict, output);
+
+  if (output[0 ] != 42) FAIL();
+  if (output[1 ] != 66) FAIL();
+  if (output[2 ] != 7) FAIL();
+  if (output[3 ] != 7) FAIL();
+  if (output[4 ] != 88) FAIL();
+  if (output[5 ] != 88) FAIL();
+  if (output[6 ] != 66) FAIL();
+  if (output[7 ] != 5) FAIL();
+  if (output[8 ] != 5) FAIL();
+  if (output[9 ] != 5) FAIL();
+  if (output[10] != 42) FAIL();
+  if (output[11] != 5) FAIL();
+  if (output[12] != 42) FAIL();
 
   return totalres;
 }
@@ -267,6 +305,7 @@ int main(int argc, char **argv) {
   totalres += test_READ_INV();
   totalres += test_READ();
   totalres += test_distance_static_dictionary();
+  totalres += test_ndecode();
 
   return totalres;
 }
