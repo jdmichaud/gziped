@@ -564,8 +564,8 @@ void parse_dynamic_tree(uint8_t **buf, uint8_t *mask,
 }
 
 // TODO: break this function down into smaller functions
-void inflate_block(uint8_t **buf, uint8_t *mask,
-                   dict_t litdict, dict_t distdict, uint8_t *output) {
+uint8_t * inflate_block(uint8_t **buf, uint8_t *mask,
+                        dict_t litdict, dict_t distdict, uint8_t *output) {
   uint16_t index = 0;
   uint16_t value = 0;
 
@@ -613,6 +613,7 @@ void inflate_block(uint8_t **buf, uint8_t *mask,
     }
     index = 0;
   }
+  return output;
 }
 
 void inflate(uint8_t *buf, uint8_t *output) {
@@ -652,8 +653,8 @@ void inflate(uint8_t *buf, uint8_t *output) {
       }
       case DEFLATE_FIX_HUF_BLOCK_TYPE: {
         // printf("DEFLATE_FIX_HUF_BLOCK_TYPE\n");
-        inflate_block(&current_buf, &mask, static_dict, distance_static_dict,
-          output);
+        output = inflate_block(&current_buf, &mask, static_dict,
+          distance_static_dict, output);
         break;
       }
       case DEFLATE_DYN_HUF_BLOCK_TYPE: {
@@ -661,11 +662,9 @@ void inflate(uint8_t *buf, uint8_t *output) {
         uint16_t dict[DYNAMIC_DICT_SIZE];
         uint16_t dist_dict[DYNAMIC_DICT_SIZE];
         parse_dynamic_tree(&current_buf, &mask, dict, dist_dict);
-        // exit(0);
-        inflate_block(&current_buf, &mask, dict, dist_dict, output);
+        output = inflate_block(&current_buf, &mask, dict, dist_dict, output);
         break;
       }
     }
-    return;
   } while (bfinal != 1);
 }
