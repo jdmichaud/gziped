@@ -49,7 +49,7 @@ int main(int argc, char **argv) {
 
   metadata_t metadata;
   get_metadata(buffer, size, &metadata);
-  // print_metadata(*metadata);
+  // print_metadata(metadata);
 
   uint8_t *inflated = (uint8_t *) malloc(metadata.footer.isize);
   inflate(&buffer[metadata.block_offset], inflated);
