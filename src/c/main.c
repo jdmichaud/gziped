@@ -58,9 +58,9 @@ int main(int argc, char **argv) {
   if (crc32 != metadata.footer.crc32) {
     fprintf(stderr, "error: cyclic redundancy check failed! (0x%08x != 0x%08x)\n",
       metadata.footer.crc32, crc32);
-    exit(6);
+  } else {
+    write_file(metadata, inflated);
   }
-  write_file(metadata, inflated);
 
   free(inflated);
   free_metadata(&metadata);
