@@ -1,5 +1,1 @@
-gziped
 *.gz
-*.o
-*.a
-src/c/test
