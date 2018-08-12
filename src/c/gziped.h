@@ -59,6 +59,11 @@ char *strndup(const char *s, size_t n);
 #define DEFLATE_ALPHABET_SIZE 288
 #define DEFLATE_END_BLOCK_VALUE 256
 
+// Can seem a little steep but according to
+// https://tools.ietf.org/html/rfc1951#page-13, code lengths for dynamic
+// dictionaries can be as long as 15 bits.
+#define DYNAMIC_DICT_SIZE 65535
+
 // https://tools.ietf.org/html/rfc1952#page-5
 typedef struct header_s {
   uint16_t  magic;
@@ -170,6 +175,18 @@ uint8_t length_extra_bits[DEFLATE_LENGTH_EXTRA_BITS_ARRAY_SIZE] = {
 uint8_t distance_extra_bits[DEFLATE_DISTANCE_EXTRA_BITS_ARRAY_SIZE] = {
   0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11,
   11, 12, 12, 13, 13
+};
+
+// https://tools.ietf.org/html/rfc1951#page-14
+#define CODE_LENGTHS_CODE_LENGTH 19 // yeah...
+uint8_t code_length_code_alphabet[CODE_LENGTHS_CODE_LENGTH] = {
+  16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15
+};
+uint8_t code_length_lengths_extra_size[CODE_LENGTHS_CODE_LENGTH] = {
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 3, 7
+};
+uint8_t code_length_lengths_extra_size_offset[CODE_LENGTHS_CODE_LENGTH] = {
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 3, 11
 };
 
 // Move the mask bit to the left up to 128, then reinit to 1 and increment ptr
@@ -395,7 +412,7 @@ void generate_dict(const uint8_t *code_lengths, ssize_t size,
  * Shorthand function.
  */
 void generate_dict_from_code_length(const uint8_t *code_lengths,
-                                    uint8_t length_counts_size, dict_t dict,
+                                    size_t length_counts_size, dict_t dict,
                                     uint32_t dict_size) {
   uint8_t length_counts[DEFLATE_CODE_MAX_BIT_LENGTH];
   count_by_code_length(code_lengths, length_counts_size, length_counts);
@@ -408,43 +425,88 @@ void generate_dict_from_code_length(const uint8_t *code_lengths,
 }
 
 /**
- * Decode an input of size n according to a dictionary and write the values in
- * the output,
+ * Decode an input according to a dictionary and write the values in the output.
  * @param buf         the input buffer with huffman cdoes
  * @param mask        the position in the buffer
- * @param output_size the output size (number of values to decode from input)
  * @param dict        the huffman dictionary
  * @param output      the output buffer. Shall be allocated to the proper size.
  */
-void ndecode(uint8_t **buf, uint8_t *mask, size_t input_size,
-             dict_t dict, uint8_t *output) {
+void decode(uint8_t **buf, uint8_t *mask, dict_t dict, uint8_t *output) {
   uint16_t index = 0;
   uint16_t value = 0;
-  uint8_t i = 0;
 
-  while (input_size) {
+  while (value != DEFLATE_END_BLOCK_VALUE) {
     do {
       index <<= 1;
       index += **buf & *mask ? 2 : 1;
       // printf("%u", **buf & *mask ? 1 : 0);
       INCREMENT_MASK(*mask, *buf);
-      ++i;
     } while ((value = dict[index]) == NO_VALUE);
     // printf("\nfound %u at %u\n", value, index);
     *output++ = value;
     index = 0;
-    i = 0;
-    input_size--;
   }
 }
 
 /**
- * https://tools.ietf.org/html/rfc1951#page-13
+ * Dynamic dictionaries are using special encoding rules.
+ * https://tools.ietf.org/html/rfc1951#page-13.
+ * @param buf        [description]
+ * @param mask       [description]
+ * @param input_size [description]
+ * @param dict       [description]
+ * @param output     [description]
+ * @param alphabet   [description]
+ */
+void decode_dynamic_dict_lengths(uint8_t **buf, uint8_t *mask, size_t input_size,
+                                 dict_t dict, uint8_t *output, uint8_t *alphabet) {
+  uint16_t index = 0;
+  uint16_t value = 0;
+
+  while (input_size) {
+    do {
+      index <<= 1;
+      index += **buf & *mask ? 2 : 1;
+      INCREMENT_MASK(*mask, *buf);
+    } while ((value = dict[index]) == NO_VALUE);
+    index = 0;
+    input_size--;
+    // A little complicated dance here...
+    // https://tools.ietf.org/html/rfc1951#page-13
+    value = alphabet[value];
+    if (value < 16) {
+      // Between 0 and 15, we just copy the value
+      *output++ = value;
+    } else {
+      if (value == 16) {
+        // 16 we copy the last value according to the 2 next bits + 3
+        uint8_t extra = 0;
+        READ_INV(extra, *mask, *buf, 2);
+        uint8_t last_value = output[-1];
+        for (int i = 0; i < extra + 3; ++i) {
+          *output++ = last_value;
+        }
+      } else {
+        // 17 or 18, we append 0 according to the extra bits
+        uint8_t extra = 0;
+        uint8_t extra_size = code_length_lengths_extra_size[value];
+        READ_INV(extra, *mask, *buf, extra_size);
+        for (int i = 0; i < extra + code_length_lengths_extra_size_offset[value]; ++i) {
+          *output++ = 0;
+        }
+      }
+    }
+  }
+}
+
+/**
  * Decode the dynamic code and generate a dictionary.
+ * https://tools.ietf.org/html/rfc1951#page-13.
  * @param pos  [description]
  * @param mask [description]
  */
-void parse_dynamic_tree(uint8_t **buf, uint8_t *mask) {
+void parse_dynamic_tree(uint8_t **buf, uint8_t *mask,
+                        dict_t litdict, dict_t distdict) {
   // First read HLEN (4 bits), HDIST (5 bits) and HLIT (5 bits)
   uint8_t hlen;
   uint8_t hdist;
@@ -452,26 +514,41 @@ void parse_dynamic_tree(uint8_t **buf, uint8_t *mask) {
   READ_INV(hlit, *mask, *buf, 5);
   READ_INV(hdist, *mask, *buf, 5);
   READ_INV(hlen, *mask, *buf, 4);
-  printf("hlen %u hdist %u hlit %u\n", hlen, hdist, hlit);
-  // Read code lengths code. There will be (HLEN + 4) * 3.
-  uint8_t code_lengths_lengths[19];
-  bzero(code_lengths_lengths, 19 * sizeof (uint8_t));
+  printf("hlen %u hdist %u hlit %u\n", hlen + 4, hdist + 1, hlit + 257);
+  // Read HLEN + 4 code length codes.
+  uint8_t code_length_lengths[19];
+  bzero(code_length_lengths, 19 * sizeof (uint8_t));
   for (uint8_t i = 0; i < hlen + 4; ++i) {
-    READ_INV(code_lengths_lengths[i], *mask, *buf, 3);
-    printf("code length code[%u] %u\n", i, code_lengths_lengths[i]);
+    READ_INV(code_length_lengths[i], *mask, *buf, 3);
+    // printf("code length code[%u] %u\n", i, code_length_lengths[i]);
   }
-  uint16_t dict[256];
-  generate_dict_from_code_length(code_lengths_lengths, 19, dict, 256);
+  uint16_t code_length_dict[256];
+  generate_dict_from_code_length(code_length_lengths, 19, code_length_dict, 256);
   // for (int i = 0; i < 256; ++i) {
-  //   printf("dict[%u] = %u\n", i, dict[i]);
+  //   printf("code_length_dict[%u] = %u\n", i, code_length_dict[i]);
   // }
-  // Read the HLIT code length for the literal/length dynamic dictionary
+  // Read the HLIT + 257 code length for the literal/length dynamic dictionary
   uint8_t literal_lengths[287];
   bzero(literal_lengths, 287 * sizeof (uint8_t));
-  for (int i = 0; i < hlit + 257; ++i) {
-    
-  }
-  printf("parse_dynamic_tree end\n");
+  decode_dynamic_dict_lengths(buf, mask, hlit + 257, code_length_dict,
+    literal_lengths, code_length_code_alphabet);
+  // for (int i = 0; i < hlit + 257; ++i) {
+  //   printf("literal_lengths[%u] = %u\n", i, literal_lengths[i]);
+  // }
+  // Read the HDIST + 1 code length for the distance dynamic dictionary
+  uint8_t distance_lengths[32];
+  bzero(distance_lengths, 32 * sizeof (uint8_t));
+  decode_dynamic_dict_lengths(buf, mask, hdist + 1, code_length_dict,
+    distance_lengths, code_length_code_alphabet);
+  // for (int i = 0; i < hdist + 1; ++i) {
+  //   printf("distance_lengths[%u] = %u\n", i, distance_lengths[i]);
+  // }
+  // Generates the dynamic dictionary
+  generate_dict_from_code_length(literal_lengths, hlit + 257, litdict,
+    DYNAMIC_DICT_SIZE);
+  generate_dict_from_code_length(distance_lengths, hdist + 1, distdict,
+    DYNAMIC_DICT_SIZE);
+  // printf("parse_dynamic_tree end\n");
 }
 
 // TODO: break this function down into smaller functions
@@ -481,15 +558,20 @@ void inflate_block(uint8_t **buf, uint8_t *mask,
   uint16_t value = 0;
 
   while (value != DEFLATE_END_BLOCK_VALUE) {
+    uint8_t count = 0;
     do {
       index <<= 1;
       index += **buf & *mask ? 2 : 1;
       INCREMENT_MASK(*mask, *buf);
+      ++count;
+      if (count > 32) exit(0);
     } while ((value = litdict[index]) == NO_VALUE);
     if (value < DEFLATE_END_BLOCK_VALUE) {
       *output++ = value;
+      printf("value %u\n", value);
     }
     if (value > DEFLATE_END_BLOCK_VALUE) {
+      printf("length code %u\n", value);
       // length code
       uint8_t nb_extra_bits = length_extra_bits[value - DEFLATE_END_BLOCK_VALUE - 1];
       uint8_t extra_bits = 0;
@@ -508,10 +590,11 @@ void inflate_block(uint8_t **buf, uint8_t *mask,
       nb_extra_bits = distance_extra_bits[distance];
       extra_bits = 0;
       READ_INV(extra_bits, *mask, *buf, nb_extra_bits);
-      // Value 0 corresponds to a ditance of 1 (0 + 1 = 1)
+      // Value 0 corresponds to a distance of 1 (0 + 1 = 1)
       // See https://tools.ietf.org/html/rfc1951#page-12
       distance += extra_bits + 1;
       if (length > distance) {
+        printf("length %u distance %u\n", length, distance);
         fprintf(stderr, "error: corrupted gzip file\n");
         exit(1);
       }
@@ -563,11 +646,11 @@ void inflate(uint8_t *buf, uint8_t *output) {
       }
       case DEFLATE_DYN_HUF_BLOCK_TYPE: {
         printf("DEFLATE_DYN_HUF_BLOCK_TYPE\n");
-        uint16_t dict[1024];
-        uint16_t dist_dict[1024];
-        parse_dynamic_tree(&current_buf, &mask);
-        exit(0);
-        // inflate_block(&current_buf, &mask, dict, dist_dict, output);
+        uint16_t dict[DYNAMIC_DICT_SIZE];
+        uint16_t dist_dict[DYNAMIC_DICT_SIZE];
+        parse_dynamic_tree(&current_buf, &mask, dict, dist_dict);
+        // exit(0);
+        inflate_block(&current_buf, &mask, dict, dist_dict, output);
         break;
       }
     }

@@ -255,26 +255,27 @@ uint8_t test_distance_static_dictionary() {
   return totalres;
 }
 
-uint8_t test_ndecode() {
+uint8_t test_decode() {
   uint8_t totalres = 0;
 
-  // 00101100 01101001 10100111 00100010
+  // 00101100 01101001 10100111 01110010
   // 00 (3) -> 42
   // 110 (13) -> 66
   // 100 (11) -> 7
   // 101 (12) -> 88
   // 01 (4) -> 5
+  // 111 (14) -> DEFLATE_END_BLOCK_VALUE
   uint8_t *input = malloc(4 * sizeof (uint8_t));
-  input[0] = 44; input[1] =  105; input[2] = 167; input[3] = 34;
+  uint8_t *pos = input;
+  input[0] = 44; input[1] =  105; input[2] = 167; input[3] = 242;
   uint8_t mask = 1;
-  uint8_t input_size = 13;
   uint16_t dict[16] = {
   // 0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
-    -1, -1, -1, 42,  5, -1, -1, -1, -1, -1, -1,  7, 88, 66, -1, -1
+    -1, -1, -1, 42,  5, -1, -1, -1, -1, -1, -1,  7, 88, 66, DEFLATE_END_BLOCK_VALUE, -1
   };
-  uint8_t output[13];
+  uint8_t output[11];
 
-  ndecode(&input, &mask, input_size, dict, output);
+  decode(&pos, &mask, dict, output);
 
   if (output[0 ] != 42) FAIL();
   if (output[1 ] != 66) FAIL();
@@ -287,9 +288,8 @@ uint8_t test_ndecode() {
   if (output[8 ] != 5) FAIL();
   if (output[9 ] != 5) FAIL();
   if (output[10] != 42) FAIL();
-  if (output[11] != 5) FAIL();
-  if (output[12] != 42) FAIL();
 
+  free(input);
   return totalres;
 }
 
@@ -305,7 +305,7 @@ int main(int argc, char **argv) {
   totalres += test_READ_INV();
   totalres += test_READ();
   totalres += test_distance_static_dictionary();
-  totalres += test_ndecode();
+  totalres += test_decode();
 
   return totalres;
 }
