@@ -3,6 +3,7 @@ TEST_TARGET = test
 LIBS =
 CC = gcc
 CFLAGS = -std=c99 -ggdb3 -Wall
+#CFLAGS = -std=c99 -O3 -Wall
 LDFALGS = -L./
 
 .PHONY: default all clean
