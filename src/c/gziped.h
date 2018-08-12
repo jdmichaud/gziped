@@ -379,10 +379,7 @@ void generate_next_codes(uint8_t *length_counts, uint32_t *next_codes) {
   uint32_t code = 0;
   bzero(next_codes, DEFLATE_CODE_MAX_BIT_LENGTH * sizeof (uint32_t));
   for (uint8_t nbits = 1; nbits <= DEFLATE_CODE_MAX_BIT_LENGTH; nbits++) {
-    code = (code + length_counts[nbits - 1]) << 1;
-    if (length_counts[nbits]) {
-      next_codes[nbits] = code;
-    }
+    next_codes[nbits] = code = (code + length_counts[nbits - 1]) << 1;
   }
 }
 
