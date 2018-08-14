@@ -4,7 +4,13 @@
   <title>gziped</title>
   <script src="dist/gziped.js"></script>
   <script type="text/javascript">
-    console.log(Gziped);
+    fetch('resources/toto.gz')
+      .then(res => res.arrayBuffer()
+      .then(b => {
+        const content = new Uint8Array(b);
+        const metadata = Gziped.getMetadata(content);
+        console.log(metadata);
+      }));
   </script>
 </head>
 <body>
