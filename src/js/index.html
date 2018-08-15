@@ -4,13 +4,16 @@
   <title>gziped</title>
   <script src="dist/gziped.js"></script>
   <script type="text/javascript">
-    fetch('resources/toto.gz')
+    fetch('resources/hello2.gz')
       .then(res => res.arrayBuffer()
       .then(b => {
         const content = new Uint8Array(b);
         const metadata = Gziped.getMetadata(content);
+        console.log(metadata);
+        console.log('input buffer', content.slice(metadata.offset));
         const output = new Uint8Array(metadata.filesize);
-        Gziped.inflate(content, output);
+        Gziped.inflate(content.slice(metadata.offset), output);
+        console.log(new TextDecoder('utf-8').decode(output));
       }));
   </script>
 </head>

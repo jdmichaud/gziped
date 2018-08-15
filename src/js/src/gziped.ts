@@ -8,6 +8,12 @@ const FCOMMENT = (1 << 4);
 // 16 bits per code max
 const MAX_BITS = 16;
 
+const LITERAL_BLOCK = 0;
+const FIX_HUFF_BLOCK = 1;
+const DYN_HUFF_BLOCK = 2;
+
+const END_OF_BLOCK = 256;
+
 const OS = [
   'FAT filesystem (MS-DOS, OS/2, NT/Win32)',
   'Amiga',
@@ -25,7 +31,7 @@ const OS = [
   'Acorn RISCOS',
 ];
 
-const staticHuffmanCodeLengths = [
+const staticHuffmanLengthCodeLengths = [
   8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
   8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
   8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
@@ -38,6 +44,26 @@ const staticHuffmanCodeLengths = [
   9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
   9, 9, 9, 9, 9, 9, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
   7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8,
+];
+const staticHuffmanDistanceCodeLengths = [
+  5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+  5, 5, 5, 5, 5, 5, 5,
+ ];
+const length_lookup = [
+  3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67,
+  83, 99, 115, 131, 163, 195, 227, 258,
+];
+const length_extra_bits = [
+  0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5,
+  5, 5, 0,
+];
+const distance_lookup = [
+  1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769,
+  1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577,
+];
+const distance_extra_bits = [
+  0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11,
+  11, 12, 12, 13, 13,
 ];
 
 class Position {
@@ -75,12 +101,12 @@ class Metadata {
 export function read(buf: Uint8Array, bufpos: Position, n: number): number {
   let value = 0;
   let pos = 1;
-  do {
+  while (n--) {
     value |= buf[bufpos.index] & bufpos.mask ? pos : 0;
     pos <<= 1;
     // Move the mask bit to the left up to 128, then reinit to 1 and increment ptr
     bufpos.mask = (bufpos.mask = bufpos.mask << 1) <= 128 ? bufpos.mask : ++bufpos.index && 1;
-  } while (--n);
+  }
 
   return value;
 }
@@ -96,12 +122,12 @@ export function read(buf: Uint8Array, bufpos: Position, n: number): number {
  */
 export function readInv(buf: Uint8Array, bufpos: Position, n: number): number {
   let value = 0;
-  do {
+  while (n--) {
     value <<= 1;
     value |= buf[bufpos.index] & bufpos.mask ? 1 : 0;
     // Move the mask bit to the left up to 128, then reinit to 1 and increment ptr
     bufpos.mask = (bufpos.mask = bufpos.mask << 1) <= 128 ? bufpos.mask : ++bufpos.index && 1;
-  } while (--n);
+  }
 
   return value;
 }
@@ -157,15 +183,82 @@ export function generateDictionary(codeLengths: number[]): object {
   return dictionary;
 }
 
+function parseDynamicTree(buf: Uint8Array, bufpos: Position): { litdict: object; distdict: object} {
+  const litdict = {};
+  const distdict = {};
+  return { litdict, distdict };
+}
+
 function inflate_block(buf: Uint8Array, bufpos: Position,
                        litdict: any, distdict: any,
                        output: Uint8Array, outputpos: Position): void {
+  let value = 0;
+  while (value !== END_OF_BLOCK) {
+    let index = 0;
+    do {
+      index <<= 1;
+      index += (buf[bufpos.index] & bufpos.mask) ? 2 : 1;
+      bufpos.mask = (bufpos.mask = bufpos.mask << 1) <= 128 ? bufpos.mask : ++bufpos.index && 1;
+      if (bufpos.index > buf.length) throw new Error('buffer overrun');
+    } while ((value = litdict[index]) === undefined);
+    if (value < END_OF_BLOCK) {
+      output[outputpos.index++] = value;
+    }
+    if (value > END_OF_BLOCK) {
+      // We have a length
+      let length = length_lookup[value - END_OF_BLOCK - 1];
+      length += read(buf, bufpos, length_extra_bits[length]);
+      // Read the distance
+      index = 0;
+      value = 0;
+      do {
+        index <<= 1;
+        index += (buf[bufpos.index] & bufpos.mask) ? 2 : 1;
+        bufpos.mask = (bufpos.mask = bufpos.mask << 1) <= 128 ? bufpos.mask : ++bufpos.index && 1;
+        if (bufpos.index > buf.length) throw new Error('buffer overrun');
+      } while ((value = distdict[index]) === undefined);
+      let distance = distance_lookup[value];
+      distance += read(buf, bufpos, distance_extra_bits[distance]);
+      // Copy bytes from the past. TODO: find a way to do that faster!
+      while (length--) {
+        output[outputpos.index] = output[outputpos.index - distance];
+        outputpos.index++;
+      }
+    }
+  }
 }
 
 export function inflate(buf: Uint8Array, output: Uint8Array): void {
-  const staticDict = generateDictionary(staticHuffmanCodeLengths);
+  const staticLitdict = generateDictionary(staticHuffmanLengthCodeLengths);
+  const staticDistdict = generateDictionary(staticHuffmanDistanceCodeLengths);
   let bfinal;
+  let bufpos = { index: 0, mask: 1 };
+  let outputpos = { index: 0, mask: undefined };
   do {
+    bfinal = read(buf, bufpos, 1);
+    console.log('bufpos', bufpos);
+    const btype = read(buf, bufpos, 2);
+    console.log('btype', btype);
+    switch (btype) {
+      case LITERAL_BLOCK:
+        console.log('literal block');
+        if (bufpos.mask === 1) bufpos.index++;
+        const length = getInteger(buf, bufpos.index, 2);
+        bufpos.index += 4;
+        output.set(buf.slice(bufpos.index, bufpos.index + length), outputpos.index);
+        outputpos.index += length;
+        console.log(`copied ${length} from ${bufpos.index}`);
+        break;
+      case FIX_HUFF_BLOCK:
+        console.log('fix huffman block');
+        inflate_block(buf, bufpos, staticLitdict, staticDistdict, output, outputpos);
+        break;
+      case DYN_HUFF_BLOCK:
+        console.log('dynamic huffman block');
+        break;
+      default:
+        throw new Error('unknown block type');
+    }
   } while (!bfinal);
 }
 
