@@ -10,6 +10,7 @@
     "max-classes-per-file": false,
     "no-bitwise": false,
     "no-empty": false,
-    "arrow-parens": false
+    "arrow-parens": false,
+    "non-cond-assign": false,
   }
 }

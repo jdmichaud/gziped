@@ -1,6 +1,47 @@
-import { generateDictionary, generateNextCodes, getInteger } from './gziped';
+import {
+  generateDictionary,
+  generateNextCodes,
+  getInteger,
+  read,
+  readInv,
+} from './gziped';
 
 describe('gziped', () => {
+  describe('read', () => {
+    it('shall read bit from left to right', () => {
+      // buffer: 11101010 11000011 10100010
+      // order:  76543210    ...98
+      const buffer = [ 234, 195, 162 ];
+      const bufpos = { index: 0, mask: 1 };
+      expect(read(buffer, bufpos, 4)).toEqual(0b1010);
+      console.log(bufpos);
+      expect(read(buffer, bufpos, 8)).toEqual(0b00111110);
+      expect(read(buffer, bufpos, 2)).toEqual(0b00);
+      expect(read(buffer, bufpos, 2)).toEqual(0b11);
+      expect(read(buffer, bufpos, 4)).toEqual(0b0010);
+      expect(read(buffer, bufpos, 1)).toEqual(0b0);
+      expect(read(buffer, bufpos, 3)).toEqual(0b101);
+    });
+  });
+
+  describe('readInv', () => {
+    it('shall read bit from right to left', () => {
+      // buffer: 11101010 11000011 10100010
+      // order:  76543210    ...98
+      const buffer = [ 234, 195, 162 ];
+      const bufpos = { index: 0, mask: 1 };
+      expect(readInv(buffer, bufpos, 4)).toEqual(0b0101);
+      expect(readInv(buffer, bufpos, 4)).toEqual(0b0111);
+      expect(readInv(buffer, bufpos, 2)).toEqual(0b11);
+      expect(readInv(buffer, bufpos, 4)).toEqual(0b0000);
+      expect(readInv(buffer, bufpos, 2)).toEqual(0b11);
+      expect(readInv(buffer, bufpos, 3)).toEqual(0b010);
+      expect(readInv(buffer, bufpos, 1)).toEqual(0b0);
+      expect(readInv(buffer, bufpos, 1)).toEqual(0b0);
+      expect(readInv(buffer, bufpos, 3)).toEqual(0b101);
+    });
+  });
+
   describe('getInteger', () => {
     it('shall retrieve an integer of size length from the buffer', () => {
       const buf = new Uint8Array([0x12, 0x34, 0x56, 0x78]);

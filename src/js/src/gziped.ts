@@ -64,6 +64,49 @@ class Metadata {
 }
 
 /**
+ * Reads n bits starting at bufpos. Generates results as read from left
+ * to right.
+ * 76543210 FEDCBA98
+ * ——▶——▶—— —————▶——
+ *  3 2  1    5   3
+ * result:
+ *  210 543 9876 FEDCB
+ */
+export function read(buf: Uint8Array, bufpos: Position, n: number): number {
+  let value = 0;
+  let pos = 1;
+  do {
+    value |= buf[bufpos.index] & bufpos.mask ? pos : 0;
+    pos <<= 1;
+    // Move the mask bit to the left up to 128, then reinit to 1 and increment ptr
+    bufpos.mask = (bufpos.mask = bufpos.mask << 1) <= 128 ? bufpos.mask : ++bufpos.index && 1;
+  } while (--n);
+
+  return value;
+}
+
+/**
+ * Reads n bits start at offset and mask. Generates results as read from right
+ * to left.
+ * 76543210 FEDCBA98
+ * ◀——————— ◀———————
+ *     1        2
+ * result:
+ *  01234567 89ABCDEF
+ */
+export function readInv(buf: Uint8Array, bufpos: Position, n: number): number {
+  let value = 0;
+  do {
+    value <<= 1;
+    value |= buf[bufpos.index] & bufpos.mask ? 1 : 0;
+    // Move the mask bit to the left up to 128, then reinit to 1 and increment ptr
+    bufpos.mask = (bufpos.mask = bufpos.mask << 1) <= 128 ? bufpos.mask : ++bufpos.index && 1;
+  } while (--n);
+
+  return value;
+}
+
+/**
  * Extracts a value of length bytes at offset in buf.
  */
 export function getInteger(buf: Uint8Array, offset: number, length: number): number {
@@ -120,7 +163,10 @@ function inflate_block(buf: Uint8Array, bufpos: Position,
 }
 
 export function inflate(buf: Uint8Array, output: Uint8Array): void {
-
+  const staticDict = generateDictionary(staticHuffmanCodeLengths);
+  let bfinal;
+  do {
+  } while (!bfinal);
 }
 
 export function getMetadata(buf: Uint8Array): Metadata {
