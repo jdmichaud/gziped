@@ -1,8 +1,12 @@
+// Static variables
 const FTEXT    =       1;
 const FHCRC    = (1 << 1);
 const FEXTRA   = (1 << 2);
 const FNAME    = (1 << 3);
 const FCOMMENT = (1 << 4);
+
+// 16 bits per code max
+const MAX_BITS = 16;
 
 const OS = [
   'FAT filesystem (MS-DOS, OS/2, NT/Win32)',
@@ -19,6 +23,21 @@ const OS = [
   'NTFS filesystem (NT)',
   'QDOS',
   'Acorn RISCOS',
+];
+
+const staticHuffmanCodeLengths = [
+  8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+  8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+  8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+  8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+  8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+  8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9,
+  9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+  9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+  9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+  9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+  9, 9, 9, 9, 9, 9, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+  7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8,
 ];
 
 class Position {
@@ -44,16 +63,55 @@ class Metadata {
   public offset: number; // where does the first block starts
 }
 
-const textDecoder = new TextDecoder("utf-8");
-
-function getInteger(buf: Uint8Array, offset: number, length: number): number {
+/**
+ * Extracts a value of length bytes at offset in buf.
+ */
+export function getInteger(buf: Uint8Array, offset: number, length: number): number {
   let value = 0;
-  let pos = length;
+  let pos = 0;
   do {
-    const shift = pos - 1;
-    value |= buf[offset + shift] << 2 ** shift;
-  } while (pos--);
+    value |= buf[offset + pos] << (pos * 8);
+  } while (++pos < length);
   return value;
+}
+
+/**
+ * Generates the first codes for each code lengths.
+ */
+export function generateNextCodes(codeLength: number[]): number[] {
+  const codeLengthCount = Array.apply({}, new Array(MAX_BITS)).map(_ => 0);
+  codeLength.forEach(i => codeLengthCount[i]++);
+  codeLengthCount[0] = 0;
+
+  let code = 0;
+  const nextCodes = Array.apply({}, new Array(MAX_BITS)).map(_ => 0);
+  for (let i = 1; i < MAX_BITS; i++) {
+    nextCodes[i] = code = (code + codeLengthCount[i - 1]) << 1;
+  }
+  return nextCodes;
+}
+
+/**
+ * Generates a Huffman dictionary based on code lengths.
+ * TODO: to improve performance replace the object dictionary by a faster
+ *       data structure.
+ */
+export function generateDictionary(codeLengths: number[]): object {
+  const dictionary = {};
+  const nextCodes = generateNextCodes(codeLengths);
+  for (let i = 0; i < codeLengths.length; ++i) {
+    const length = codeLengths[i];
+    let mask = 1 << (length - 1);
+    let index = 0;
+    while (mask > 0) {
+      index <<= 1;
+      index += (nextCodes[length] & mask) ? 2 : 1;
+      mask >>= 1;
+    }
+    dictionary[index] = i;
+    nextCodes[length]++;
+  }
+  return dictionary;
 }
 
 function inflate_block(buf: Uint8Array, bufpos: Position,
@@ -62,6 +120,7 @@ function inflate_block(buf: Uint8Array, bufpos: Position,
 }
 
 export function inflate(buf: Uint8Array, output: Uint8Array): void {
+
 }
 
 export function getMetadata(buf: Uint8Array): Metadata {
@@ -92,14 +151,14 @@ export function getMetadata(buf: Uint8Array): Metadata {
   let filename = '';
   if (flag & FNAME) {
     while (buf[endofstr++] !== 0) {}
-    filename = textDecoder.decode(buf.slice(offset, endofstr - 1));
+    filename = new TextDecoder('utf-8').decode(buf.slice(offset, endofstr - 1));
     offset = endofstr;
   }
   // retrieve 0 terminated comment
   let comment = '';
   if (flag & FCOMMENT) {
     while (buf[endofstr++] !== 0) {}
-    comment = textDecoder.decode(buf.slice(offset, endofstr - 1));
+    comment = new TextDecoder('utf-8').decode(buf.slice(offset, endofstr - 1));
     offset = endofstr;
   }
   let crc16 = 0;

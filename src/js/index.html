@@ -9,7 +9,8 @@
       .then(b => {
         const content = new Uint8Array(b);
         const metadata = Gziped.getMetadata(content);
-        console.log(metadata);
+        const output = new Uint8Array(metadata.filesize);
+        Gziped.inflate(content, output);
       }));
   </script>
 </head>
