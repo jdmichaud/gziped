@@ -378,7 +378,7 @@ void count_by_code_length(const uint8_t *code_lengths, ssize_t size,
 void generate_next_codes(uint8_t *length_counts, uint32_t *next_codes) {
   uint32_t code = 0;
   bzero(next_codes, DEFLATE_CODE_MAX_BIT_LENGTH * sizeof (uint32_t));
-  for (uint8_t nbits = 1; nbits <= DEFLATE_CODE_MAX_BIT_LENGTH; nbits++) {
+  for (uint8_t nbits = 1; nbits < DEFLATE_CODE_MAX_BIT_LENGTH; nbits++) {
     next_codes[nbits] = code = (code + length_counts[nbits - 1]) << 1;
   }
 }
