@@ -49,21 +49,30 @@ const staticHuffmanDistanceCodeLengths = [
   5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
   5, 5, 5, 5, 5, 5, 5,
  ];
-const length_lookup = [
+const lengthLookup = [
   3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67,
   83, 99, 115, 131, 163, 195, 227, 258,
 ];
-const length_extra_bits = [
+const lengthExtraBits = [
   0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5,
   5, 5, 0,
 ];
-const distance_lookup = [
+const distanceLookup = [
   1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769,
   1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577,
 ];
-const distance_extra_bits = [
+const distanceExtraBits = [
   0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11,
   11, 12, 12, 13, 13,
+];
+const codeLengthCodeAlphabet = [
+  16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15
+];
+const codeLengthLengthsExtraSize = [
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 3, 7
+];
+const codeLengthLengthsExtraSizeOffset = [
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 3, 11
 ];
 
 class Position {
@@ -183,13 +192,63 @@ export function generateDictionary(codeLengths: number[]): object {
   return dictionary;
 }
 
-function parseDynamicTree(buf: Uint8Array, bufpos: Position): { litdict: object; distdict: object} {
-  const litdict = {};
-  const distdict = {};
-  return { litdict, distdict };
+function decodeDynamicDictLengths(buf: Uint8Array, bufpos: Position,
+                                  size: number, codeLengthDict: object): number[] {
+  const codeLength = [];
+  while (size > 0) {
+    let index = 0;
+    let value = 0;
+    do {
+      index <<= 1;
+      index += (buf[bufpos.index] & bufpos.mask) ? 2 : 1;
+      bufpos.mask = (bufpos.mask = bufpos.mask << 1) <= 128 ? bufpos.mask : ++bufpos.index && 1;
+      if (bufpos.index > buf.length) throw new Error('buffer overrun');
+    } while ((value = codeLengthDict[index]) === undefined);
+    if (value < 16) {
+      codeLength.push(value);
+      size--;
+    } else {
+      if (value === 16) {
+        const repeat = read(buf, bufpos, codeLengthLengthsExtraSize[value]) +
+          codeLengthLengthsExtraSizeOffset[value];
+        const last = codeLength[codeLength.length - 1];
+        for (let i = 0; i < repeat; ++i) {
+          codeLength.push(last);
+        }
+        size -= repeat;
+      } else {
+        const repeat = read(buf, bufpos, codeLengthLengthsExtraSize[value]) +
+          codeLengthLengthsExtraSizeOffset[value];
+        for (let i = 0; i < repeat; ++i) {
+          codeLength.push(0);
+        }
+        size -= repeat;
+      }
+    }
+    index = 0;
+  }
+  return codeLength;
 }
 
-function inflate_block(buf: Uint8Array, bufpos: Position,
+function parseDynamicTree(buf: Uint8Array, bufpos: Position): { litDict: object; distDict: object} {
+  const hlit = read(buf, bufpos, 5);
+  const hdist = read(buf, bufpos, 5);
+  const hlen = read(buf, bufpos, 4);
+  const codeLengthCodeLengths = Array.apply({}, new Array(19)).map(_ => 0);
+  for (let i = 0; i < hlen + 4; ++i) {
+    const codeLengthCode = read(buf, bufpos, 3);
+    codeLengthCodeLengths[codeLengthCodeAlphabet[i]] = codeLengthCode;
+  }
+  const codeLengthDict = generateDictionary(codeLengthCodeLengths);
+  const literalLengths = decodeDynamicDictLengths(buf, bufpos, hlit + 257, codeLengthDict);
+  const distanceLengths = decodeDynamicDictLengths(buf, bufpos, hdist + 1, codeLengthDict);
+  return {
+    litDict: generateDictionary(literalLengths),
+    distDict: generateDictionary(distanceLengths),
+  };
+}
+
+function inflateBlock(buf: Uint8Array, bufpos: Position,
                        litdict: any, distdict: any,
                        output: Uint8Array, outputpos: Position): void {
   let value = 0;
@@ -206,8 +265,8 @@ function inflate_block(buf: Uint8Array, bufpos: Position,
     }
     if (value > END_OF_BLOCK) {
       // We have a length
-      let length = length_lookup[value - END_OF_BLOCK - 1];
-      length += read(buf, bufpos, length_extra_bits[length]);
+      const length = lengthLookup[value - END_OF_BLOCK - 1] +
+        read(buf, bufpos, lengthExtraBits[value - END_OF_BLOCK - 1]);
       // Read the distance
       index = 0;
       value = 0;
@@ -217,44 +276,40 @@ function inflate_block(buf: Uint8Array, bufpos: Position,
         bufpos.mask = (bufpos.mask = bufpos.mask << 1) <= 128 ? bufpos.mask : ++bufpos.index && 1;
         if (bufpos.index > buf.length) throw new Error('buffer overrun');
       } while ((value = distdict[index]) === undefined);
-      let distance = distance_lookup[value];
-      distance += read(buf, bufpos, distance_extra_bits[distance]);
+      const distance = distanceLookup[value] +
+        read(buf, bufpos, distanceExtraBits[value]);
       // Copy bytes from the past. TODO: find a way to do that faster!
-      while (length--) {
-        output[outputpos.index] = output[outputpos.index - distance];
-        outputpos.index++;
+      for (var i = 0; i < length; ++i) {
+        output[outputpos.index + i] = output[outputpos.index - distance + i];
       }
+      outputpos.index += length;
     }
   }
 }
 
 export function inflate(buf: Uint8Array, output: Uint8Array): void {
-  const staticLitdict = generateDictionary(staticHuffmanLengthCodeLengths);
-  const staticDistdict = generateDictionary(staticHuffmanDistanceCodeLengths);
+  const staticLitDict = generateDictionary(staticHuffmanLengthCodeLengths);
+  const staticDistDict = generateDictionary(staticHuffmanDistanceCodeLengths);
   let bfinal;
   let bufpos = { index: 0, mask: 1 };
   let outputpos = { index: 0, mask: undefined };
   do {
     bfinal = read(buf, bufpos, 1);
-    console.log('bufpos', bufpos);
     const btype = read(buf, bufpos, 2);
-    console.log('btype', btype);
     switch (btype) {
       case LITERAL_BLOCK:
-        console.log('literal block');
         if (bufpos.mask === 1) bufpos.index++;
         const length = getInteger(buf, bufpos.index, 2);
         bufpos.index += 4;
         output.set(buf.slice(bufpos.index, bufpos.index + length), outputpos.index);
         outputpos.index += length;
-        console.log(`copied ${length} from ${bufpos.index}`);
         break;
       case FIX_HUFF_BLOCK:
-        console.log('fix huffman block');
-        inflate_block(buf, bufpos, staticLitdict, staticDistdict, output, outputpos);
+        inflateBlock(buf, bufpos, staticLitDict, staticDistDict, output, outputpos);
         break;
       case DYN_HUFF_BLOCK:
-        console.log('dynamic huffman block');
+        const { litDict, distDict } = parseDynamicTree(buf, bufpos);
+        inflateBlock(buf, bufpos, litDict, distDict, output, outputpos);
         break;
       default:
         throw new Error('unknown block type');
