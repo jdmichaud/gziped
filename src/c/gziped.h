@@ -469,7 +469,7 @@ void decode(uint8_t **buf, uint8_t *mask, dict_t dict, uint8_t *output) {
  * https://tools.ietf.org/html/rfc1951#page-13.
  */
 void decode_dynamic_dict_lengths(uint8_t **buf, uint8_t *mask, size_t output_size,
-                                 dict_t dict, uint8_t *output, uint8_t *alphabet) {
+                                 dict_t dict, uint8_t *output) {
   uint16_t index = 0;
   uint16_t value = 0;
 
@@ -493,7 +493,7 @@ void decode_dynamic_dict_lengths(uint8_t **buf, uint8_t *mask, size_t output_siz
         // 16 we copy the last value according to the 2 next bits + 3
         uint8_t extra = 0;
         READ(extra, *mask, *buf, 2);
-        uint8_t last_value = output[-1];
+        uint8_t last_value = *(output - 1);
         for (int i = 0; i < extra + 3; ++i) {
           *output++ = last_value;
           output_size--;
@@ -550,12 +550,12 @@ void parse_dynamic_tree(uint8_t **buf, uint8_t *mask,
   uint8_t literal_lengths[287];
   bzero(literal_lengths, 287 * sizeof (uint8_t));
   decode_dynamic_dict_lengths(buf, mask, hlit + 257, code_length_dict,
-    literal_lengths, code_length_code_alphabet);
+    literal_lengths);
   // Read the HDIST + 1 code length for the distance dynamic dictionary
   uint8_t distance_lengths[32];
   bzero(distance_lengths, 32 * sizeof (uint8_t));
   decode_dynamic_dict_lengths(buf, mask, hdist + 1, code_length_dict,
-    distance_lengths, code_length_code_alphabet);
+    distance_lengths);
   // Generates the dynamic dictionary
   generate_dict_from_code_length(literal_lengths, hlit + 257, litdict,
     DYNAMIC_DICT_SIZE);
