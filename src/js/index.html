@@ -3,23 +3,12 @@
 <head>
   <title>gziped</title>
   <script src="dist/gziped.js"></script>
-  <script type="text/javascript">
-    fetch('resources/lesmiserables.gz')
-      .then(res => res.arrayBuffer()
-      .then(b => {
-        const content = new Uint8Array(b);
-        const metadata = Gziped.getMetadata(content);
-        console.log(metadata);
-        console.log('input buffer', content.slice(metadata.offset));
-        const output = new Uint8Array(metadata.filesize);
-        performance.mark('inflate-start');
-        Gziped.inflate(content.slice(metadata.offset), output);
-        performance.mark('inflate-end');
-        performance.measure('inflate', 'inflate-start', 'inflate-end')
-        console.log("setTimeout milliseconds:", performance.getEntriesByName("inflate")[0].duration);
-      }));
-  </script>
+  <script src="main.js"></script>
 </head>
 <body>
-</body>
+  <input type="file" id="input" multiple onchange="handleFiles(this.files)">
+<!--   <div>
+    <span>processed: <p id="nbprocessed"></p>/<p id="nbloaded"></p></span>
+  </div>
+ --></body>
 </html>
