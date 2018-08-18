@@ -348,7 +348,7 @@ void get_metadata(uint8_t *buf, ssize_t size, metadata_t *metadata) {
  */
 void count_by_code_length(const uint8_t *code_lengths, ssize_t size,
                           uint8_t *length_counts) {
-  bzero(length_counts, DEFLATE_CODE_MAX_BIT_LENGTH * sizeof (uint8_t));
+  memset(length_counts, 0, DEFLATE_CODE_MAX_BIT_LENGTH * sizeof (uint8_t));
   for (; size > 0; --size) {
     length_counts[code_lengths[size - 1]]++;
   }
@@ -377,7 +377,7 @@ void count_by_code_length(const uint8_t *code_lengths, ssize_t size,
  */
 void generate_next_codes(uint8_t *length_counts, uint32_t *next_codes) {
   uint32_t code = 0;
-  bzero(next_codes, DEFLATE_CODE_MAX_BIT_LENGTH * sizeof (uint32_t));
+  memset(next_codes, 0, DEFLATE_CODE_MAX_BIT_LENGTH * sizeof (uint32_t));
   for (uint8_t nbits = 1; nbits < DEFLATE_CODE_MAX_BIT_LENGTH; nbits++) {
     next_codes[nbits] = code = (code + length_counts[nbits - 1]) << 1;
   }
@@ -528,7 +528,7 @@ void parse_dynamic_tree(uint8_t **buf, uint8_t *mask,
   // printf("hlen %u hdist %u hlit %u\n", hlen + 4, hdist + 1, hlit + 257);
   // Read HLEN + 4 code length codes.
   uint8_t code_length_lengths[19];
-  bzero(code_length_lengths, 19 * sizeof (uint8_t));
+  memset(code_length_lengths, 0, 19 * sizeof (uint8_t));
   for (uint8_t i = 0; i < hlen + 4; ++i) {
     // Warning: wasted a lot of time on this:
     // As the code length code are presented is a unsorted order, they need to
@@ -548,12 +548,12 @@ void parse_dynamic_tree(uint8_t **buf, uint8_t *mask,
   generate_dict_from_code_length(code_length_lengths, 19, code_length_dict, 256);
   // Read the HLIT + 257 code length for the literal/length dynamic dictionary
   uint8_t literal_lengths[287];
-  bzero(literal_lengths, 287 * sizeof (uint8_t));
+  memset(literal_lengths, 0, 287 * sizeof (uint8_t));
   decode_dynamic_dict_lengths(buf, mask, hlit + 257, code_length_dict,
     literal_lengths);
   // Read the HDIST + 1 code length for the distance dynamic dictionary
   uint8_t distance_lengths[32];
-  bzero(distance_lengths, 32 * sizeof (uint8_t));
+  memset(distance_lengths, 0, 32 * sizeof (uint8_t));
   decode_dynamic_dict_lengths(buf, mask, hdist + 1, code_length_dict,
     distance_lengths);
   // Generates the dynamic dictionary
