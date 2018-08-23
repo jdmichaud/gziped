@@ -1,9 +1,25 @@
-function inflate(buffer, mark) {
+function inflateWA(buffer, mark) {
+  const content = new Uint8Array(buffer);
+  const metadata = Gziped.getMetadata(content);
+  const output = Module._malloc(metadata.filesize);
+  // We could allocate once and always copy the data into the same place
+  const input = Module._malloc((content.length + metadata.offset) * content.BYTES_PER_ELEMENT);
+  Module.HEAP8.set(content.slice(metadata.offset), input);
+  performance.mark(`${mark}-start`);
+  Module._em_inflate(input, output);
+  performance.mark(`${mark}-end`);
+  performance.measure(mark, `${mark}-start`, `${mark}-end`);
+  Module._free(input);
+  Module._free(output);
+}
+
+function inflateJS(buffer, mark) {
   const content = new Uint8Array(buffer);
   const metadata = Gziped.getMetadata(content);
   const output = new Uint8Array(metadata.filesize);
+  const input = content.slice(metadata.offset);
   performance.mark(`${mark}-start`);
-  Gziped.inflate(content.slice(metadata.offset), output);
+  Gziped.inflate(input, output);
   performance.mark(`${mark}-end`);
   performance.measure(mark, `${mark}-start`, `${mark}-end`);
 }
@@ -12,7 +28,7 @@ function loadUrl(url) {
   return fetch('resources/lesmiserables.gz')
     .then(res => res.arrayBuffer())
     .then(b => {
-      inflate(b, 'inflate');
+      inflateJS(b, 'inflate');
       performance.measure('inflate', 'inflate-start', 'inflate-end');
       return performance.getEntriesByName("inflate")[0].duration;
     });
@@ -46,7 +62,7 @@ function report(mark) {
   const measures = performance.getEntriesByName(mark);
   const mean = measures.reduce((acc, m) => acc + m.duration, 0) / measures.length;
   const stddev = Math.sqrt(measures.reduce((acc, m) => acc + ((m.duration - mean) ** 2), 0) / (measures.length - 1));
-  console.log(`mean: ${mean}ms, standard deviation: ${stddev}ms`);
+  console.log(`mean: ${mean.toFixed(2)} ms, standard deviation: ${stddev.toFixed(2)} ms`);
 }
 
 async function handleFiles(fileList) {
@@ -79,12 +95,36 @@ async function handleFiles(fileList) {
   for (let zipfile of zipfiles) {
     console.log(`inflating ${zipfile.name}`);
     const content = await readFile(zipfile);
-    inflate(content, 'inflate');
+    inflateJS(content, 'inflateJS');
+    inflateWA(content, 'inflateWA');
   }
-  report('inflate');
+  report('inflateJS');
+  report('inflateWA');
+}
+
+window.test = () => {
+  return fetch('resources/lesmiserables.gz')
+    .then(res => res.arrayBuffer())
+    .then(b => {
+      const content = new Uint8Array(b);
+      const metadata = Gziped.getMetadata(content);
+      const output = Module._malloc(metadata.filesize);
+      // We could allocate once and always copy the data into the same place
+      const input = Module._malloc((content.length - metadata.offset) * content.BYTES_PER_ELEMENT);
+      Module.HEAPU8.set(content.slice(metadata.offset), input);
+      const then = performance.now();
+      window._inflateWA(input, output);
+      console.log(performance.now() - then);
+      window.output = output;
+      window.metadata = metadata;
+      window.deflated = new TextDecoder('utf-8').decode(Module.HEAPU8.slice(output, output + metadata.filesize));
+    });
 }
 
 function main() {
+  Module.onRuntimeInitialized = _ => {
+    console.log(Module);
+  };
 }
 
 window.onload = main

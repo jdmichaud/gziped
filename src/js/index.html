@@ -4,11 +4,14 @@
   <title>gziped</title>
   <script src="dist/gziped.js"></script>
   <script src="main.js"></script>
+  <script src="../wa/gziped_asm.js"></script>
 </head>
 <body>
-  <input type="file" id="input" multiple onchange="handleFiles(this.files)">
-<!--   <div>
-    <span>processed: <p id="nbprocessed"></p>/<p id="nbloaded"></p></span>
+  <div>
+    <input type="file" id="input" multiple onchange="handleFiles(this.files)">
   </div>
- --></body>
+  <div>
+    <button onclick="test()">Test</button>
+  </div>
+</body>
 </html>
