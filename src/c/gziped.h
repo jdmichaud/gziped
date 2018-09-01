@@ -533,8 +533,8 @@ uint8_t * inflate_block(uint8_t **buf, uint8_t *mask,
 
   while (value != DEFLATE_END_BLOCK_VALUE) {
     do {
-      index <<= 1;
-      index += **buf & *mask ? 2 : 1;
+      index = (index << 1) + 1;
+      if ((**buf & *mask) != 0) index++;
       INCREMENT_MASK(*mask, *buf);
     } while ((value = litdict[index]) == NO_VALUE);
     if (value < DEFLATE_END_BLOCK_VALUE) {
