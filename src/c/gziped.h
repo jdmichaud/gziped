@@ -441,30 +441,6 @@ void generate_dict_from_code_length(const uint8_t *code_lengths,
 }
 
 /**
- * Decode an input according to a dictionary and write the values in the output.
- * @param buf         the input buffer with huffman cdoes
- * @param mask        the position in the buffer
- * @param dict        the huffman dictionary
- * @param output      the output buffer. Shall be allocated to the proper size.
- */
-void decode(uint8_t **buf, uint8_t *mask, dict_t dict, uint8_t *output) {
-  uint16_t index = 0;
-  uint16_t value = 0;
-
-  while (value != DEFLATE_END_BLOCK_VALUE) {
-    do {
-      index <<= 1;
-      index += **buf & *mask ? 2 : 1;
-      // printf("%u", **buf & *mask ? 1 : 0);
-      INCREMENT_MASK(*mask, *buf);
-    } while ((value = dict[index]) == NO_VALUE);
-    // printf("\nfound %u at %u\n", value, index);
-    *output++ = value;
-    index = 0;
-  }
-}
-
-/**
  * Dynamic dictionaries are using special encoding rules.
  * https://tools.ietf.org/html/rfc1951#page-13.
  */
