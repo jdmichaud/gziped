@@ -527,8 +527,8 @@ void parse_dynamic_tree(uint8_t **buf, uint8_t *mask,
   READ(hlen, *mask, *buf, 4);
   // printf("hlen %u hdist %u hlit %u\n", hlen + 4, hdist + 1, hlit + 257);
   // Read HLEN + 4 code length codes.
-  uint8_t code_length_lengths[19];
-  memset(code_length_lengths, 0, 19 * sizeof (uint8_t));
+  uint8_t code_length_lengths[CODE_LENGTHS_CODE_LENGTH];
+  memset(code_length_lengths, 0, CODE_LENGTHS_CODE_LENGTH * sizeof (uint8_t));
   for (uint8_t i = 0; i < hlen + 4; ++i) {
     // Warning: wasted a lot of time on this:
     // As the code length code are presented is a unsorted order, they need to
@@ -545,7 +545,8 @@ void parse_dynamic_tree(uint8_t **buf, uint8_t *mask,
   }
   // Generate dictionary from code length codes
   uint16_t code_length_dict[256];
-  generate_dict_from_code_length(code_length_lengths, 19, code_length_dict, 256);
+  generate_dict_from_code_length(code_length_lengths, CODE_LENGTHS_CODE_LENGTH,
+    code_length_dict, 256);
   // Read the HLIT + 257 code length for the literal/length dynamic dictionary
   uint8_t literal_lengths[287];
   memset(literal_lengths, 0, 287 * sizeof (uint8_t));
@@ -647,6 +648,8 @@ void inflate(uint8_t *buf, uint8_t *output) {
         current_buf += 4; // Skiping 4 bytes (LEN and NLEN)
         memcpy(current_output, current_buf, len * sizeof (uint8_t));
         current_buf += len;
+        current_output += len;
+        mask = 1;
         break;
       }
       case DEFLATE_FIX_HUF_BLOCK_TYPE: {
