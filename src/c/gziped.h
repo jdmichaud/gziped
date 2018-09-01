@@ -208,22 +208,6 @@ uint8_t *g_output = NULL;
   mask = mask << 1 | mask >> 7; \
   ptr += mask & 1;
 
-// Retrieve multiple bits in inverse order.
-// 76543210 FEDCBA98
-// ◀——————— ◀———————
-//     1        2
-// result:
-//  01234567 89ABCDEF
-#define READ_INV(dest, mask, ptr, size) { \
-  dest = 0; \
-  uint8_t _size = size; \
-  while (_size--) { \
-    dest <<= 1; \
-    dest += (*ptr & mask ? 1 : 0); \
-    INCREMENT_MASK(mask, ptr) \
-  } \
-}
-
 // Retrieve multiple bits.
 // 76543210 FEDCBA98
 // ——▶——▶—— —————▶——
