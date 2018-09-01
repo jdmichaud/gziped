@@ -654,8 +654,8 @@ void inflate(uint8_t *buf, uint8_t *output) {
       }
       case DEFLATE_FIX_HUF_BLOCK_TYPE: {
         // printf("DEFLATE_FIX_HUF_BLOCK_TYPE\n");
-        output = inflate_block(&current_buf, &mask, static_dict,
-          distance_static_dict, output);
+        current_output = inflate_block(&current_buf, &mask, static_dict,
+          distance_static_dict, current_output);
         break;
       }
       case DEFLATE_DYN_HUF_BLOCK_TYPE: {
@@ -663,7 +663,7 @@ void inflate(uint8_t *buf, uint8_t *output) {
         uint16_t dict[DYNAMIC_DICT_SIZE];
         uint16_t dist_dict[DYNAMIC_DICT_SIZE];
         parse_dynamic_tree(&current_buf, &mask, dict, dist_dict);
-        output = inflate_block(&current_buf, &mask, dict, dist_dict, output);
+        current_output = inflate_block(&current_buf, &mask, dict, dist_dict, current_output);
         break;
       }
     }
