@@ -303,6 +303,8 @@ export function inflate(buf: Uint8Array, output: Uint8Array): void {
         bufpos.index += 4;
         output.set(buf.slice(bufpos.index, bufpos.index + length), outputpos.index);
         outputpos.index += length;
+        bufpos.index += length
+        bufpos.mask = 1
         break;
       case FIX_HUFF_BLOCK:
         inflateBlock(buf, bufpos, staticLitDict, staticDistDict, output, outputpos);
