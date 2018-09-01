@@ -205,7 +205,8 @@ uint8_t *g_output = NULL;
 
 // Move the mask bit to the left up to 128, then reinit to 1 and increment ptr
 #define INCREMENT_MASK(mask, ptr) \
-  if ((mask = (mask = mask << 1) ? mask : 1) == 1) ++ptr;
+  mask = mask << 1 | mask >> 7; \
+  ptr += mask & 1;
 
 // Retrieve multiple bits in inverse order.
 // 76543210 FEDCBA98
