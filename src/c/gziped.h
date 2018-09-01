@@ -639,10 +639,11 @@ void inflate(uint8_t *buf, uint8_t *output) {
 
     switch (btype) {
       case DEFLATE_LITERAL_BLOCK_TYPE: {
+        // printf("DEFLATE_LITERAL_BLOCK_TYPE\n");
         // https://tools.ietf.org/html/rfc1951#page-11
         // Uncompressed block starts on the next byte
         if (mask != 1) current_buf++; // Only increment if we haven't done it before
-        uint16_t len = *current_buf;
+        uint16_t len = *current_buf | *(current_buf + 1) << 8;
         current_buf += 4; // Skiping 4 bytes (LEN and NLEN)
         memcpy(current_output, current_buf, len * sizeof (uint8_t));
         current_buf += len;
